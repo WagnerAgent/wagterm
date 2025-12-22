@@ -349,6 +349,8 @@ if (app) {
 
   let editingConnectionId: string | null = null;
   let currentSessionId: string | null = null;
+  let sessionReceivedData = false;
+  let connectTimeout: number | null = null;
   let removeSessionData: (() => void) | null = null;
   let removeSessionExit: (() => void) | null = null;
 
@@ -596,6 +598,10 @@ if (app) {
 
       clearSessionOutput();
       updateSessionStatus(`Connecting to ${profile.username}@${profile.host}...`);
+      sessionReceivedData = false;
+      if (connectTimeout) {
+        window.clearTimeout(connectTimeout);
+      }
 
       const response = await window.wagterm.sshSession.start({
         profile,
@@ -603,14 +609,29 @@ if (app) {
         rows: 30
       });
       currentSessionId = response.sessionId;
-      updateSessionStatus(`Connected: ${profile.username}@${profile.host}`);
 
       removeSessionData?.();
       removeSessionExit?.();
 
+      connectTimeout = window.setTimeout(() => {
+        if (!sessionReceivedData && currentSessionId === response.sessionId) {
+          updateSessionStatus(
+            `No response from ${profile.host}. Check network or host availability.`
+          );
+        }
+      }, 12000);
+
       removeSessionData = window.wagterm.sshSession.onData((payload) => {
         if (payload.sessionId !== currentSessionId) {
           return;
+        }
+        if (!sessionReceivedData) {
+          sessionReceivedData = true;
+          if (connectTimeout) {
+            window.clearTimeout(connectTimeout);
+            connectTimeout = null;
+          }
+          updateSessionStatus(`Connected: ${profile.username}@${profile.host}`);
         }
         appendSessionOutput(payload.data);
       });
@@ -619,8 +640,18 @@ if (app) {
         if (payload.sessionId !== currentSessionId) {
           return;
         }
+        if (connectTimeout) {
+          window.clearTimeout(connectTimeout);
+          connectTimeout = null;
+        }
         appendSessionOutput(`\n[session closed exit=${payload.exitCode ?? 'null'}]\n`);
-        updateSessionStatus('No active session.');
+        if (!sessionReceivedData) {
+          updateSessionStatus(
+            `Connection failed (exit ${payload.exitCode ?? 'null'}).`
+          );
+        } else {
+          updateSessionStatus('No active session.');
+        }
         currentSessionId = null;
         sessionClose?.setAttribute('disabled', 'true');
       });
