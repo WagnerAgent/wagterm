@@ -1,5 +1,6 @@
 import { defineConfig } from 'electron-vite';
 import { resolve } from 'path';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   main: {
@@ -21,6 +22,7 @@ export default defineConfig({
     build: {
       outDir: '../../dist/renderer'
     },
+    plugins: [react()],
     resolve: {
       alias: {
         '@renderer': resolve(__dirname, 'src/renderer/src')

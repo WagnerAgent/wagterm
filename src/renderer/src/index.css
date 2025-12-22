@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Custom Wagterm Dark Theme */
+    --color-bg: #0f1115;
+    --color-bg-secondary: #181b21;
+    --color-text-primary: #f5f6f7;
+    --color-text-secondary: #b0b4bc;
+    --color-border: #2f333a;
+    --color-accent: #b0b4bc;
+    --color-accent-glow: rgba(176, 180, 188, 0.3);
+    --color-white: #ffffff;
+
+    /* Shadcn color mappings */
+    --background: 220 16% 6%;        /* #0f1115 */
+    --foreground: 220 10% 96%;       /* #f5f6f7 */
+    --card: 220 13% 11%;             /* #181b21 */
+    --card-foreground: 220 10% 96%;  /* #f5f6f7 */
+    --popover: 220 13% 11%;          /* #181b21 */
+    --popover-foreground: 220 10% 96%; /* #f5f6f7 */
+    --primary: 0 0% 100%;            /* #ffffff - White buttons */
+    --primary-foreground: 220 16% 6%; /* #0f1115 - Dark text on white */
+    --secondary: 220 13% 15%;        /* Slightly lighter than card */
+    --secondary-foreground: 220 10% 96%;
+    --muted: 220 13% 15%;
+    --muted-foreground: 220 9% 71%;  /* #b0b4bc */
+    --accent: 220 9% 71%;            /* #b0b4bc */
+    --accent-foreground: 220 16% 6%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 220 10% 96%;
+    --border: 220 11% 21%;           /* #2f333a */
+    --input: 220 11% 21%;
+    --ring: 220 9% 71%;              /* #b0b4bc */
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    margin: 0;
+    min-height: 100vh;
+  }
+}
