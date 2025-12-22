@@ -1,0 +1,24 @@
+{
+  "name": "wagterm",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Open-source AI SSH desktop client",
+  "main": "dist/main/index.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "lint": "eslint . --ext .ts,.js"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-vite": "^2.0.0",
+    "eslint": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.0.0"
+  }
+}

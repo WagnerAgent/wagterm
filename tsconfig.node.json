@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "target": "ES2022",
+    "strict": true,
+    "types": ["node"]
+  },
+  "include": ["src/main", "src/preload", "src/agent", "src/shared"]
+}
