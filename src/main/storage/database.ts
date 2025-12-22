@@ -18,6 +18,9 @@ export const initializeDatabase = (dbPath: string): Database.Database => {
       username TEXT NOT NULL,
       auth_method TEXT NOT NULL,
       credential_id TEXT,
+      key_path TEXT,
+      host_key_policy TEXT,
+      known_hosts_path TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -31,6 +34,21 @@ export const initializeDatabase = (dbPath: string): Database.Database => {
       created_at TEXT NOT NULL
     );
   `);
+
+  const connectionColumns = db
+    .prepare('PRAGMA table_info(connections)')
+    .all()
+    .map((row: { name: string }) => row.name);
+
+  const addColumnIfMissing = (name: string, definition: string) => {
+    if (!connectionColumns.includes(name)) {
+      db.exec(`ALTER TABLE connections ADD COLUMN ${definition}`);
+    }
+  };
+
+  addColumnIfMissing('key_path', 'key_path TEXT');
+  addColumnIfMissing('host_key_policy', 'host_key_policy TEXT');
+  addColumnIfMissing('known_hosts_path', 'known_hosts_path TEXT');
 
   return db;
 };

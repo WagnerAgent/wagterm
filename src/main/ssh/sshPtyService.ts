@@ -1,7 +1,10 @@
 import { randomUUID } from 'crypto';
-import { isAbsolute } from 'path';
+import { dirname, isAbsolute, join } from 'path';
 import type { WebContents } from 'electron';
 import { spawn } from 'node-pty';
+import keytar from 'keytar';
+import { mkdtemp, writeFile, rm } from 'fs/promises';
+import os from 'os';
 import { IpcChannels } from '../../shared/ipc';
 import type {
   ConnectionProfile,
@@ -10,6 +13,8 @@ import type {
   SshSessionDataEvent,
   SshSessionExitEvent,
   SshSessionInputRequest,
+  SshSessionOutputRequest,
+  SshSessionOutputResponse,
   SshSessionResizeRequest,
   SshSessionStartRequest,
   SshSessionStartResponse
@@ -18,7 +23,41 @@ import type {
 type SessionRecord = {
   id: string;
   pty: ReturnType<typeof spawn>;
+  tempKeyPath?: string;
 };
+
+const OUTPUT_BUFFER_LIMIT = 20000;
+
+const redactOutput = (value: string): string => {
+  // Hook for future redaction (tokens, secrets, etc).
+  return value;
+};
+
+class OutputBuffer {
+  private buffer = '';
+  private truncated = false;
+
+  constructor(private readonly maxChars: number) {}
+
+  append(value: string) {
+    const sanitized = redactOutput(value);
+    this.buffer += sanitized;
+    if (this.buffer.length > this.maxChars) {
+      this.buffer = this.buffer.slice(-this.maxChars);
+      this.truncated = true;
+    }
+  }
+
+  getRecent(limit?: number): { output: string; truncated: boolean } {
+    if (!limit || limit >= this.buffer.length) {
+      return { output: this.buffer, truncated: this.truncated };
+    }
+    return {
+      output: this.buffer.slice(-limit),
+      truncated: true
+    };
+  }
+}
 
 const isValidHost = (host: string): boolean => {
   if (host.includes('://')) {
@@ -31,24 +70,66 @@ const isValidPort = (port: number): boolean => port > 0 && port <= 65535;
 
 const resolveHostKeyPolicy = (policy?: HostKeyPolicy): HostKeyPolicy => policy ?? 'strict';
 
-const buildSshArgs = (profile: ConnectionProfile, policy: HostKeyPolicy, knownHostsPath?: string) => {
+const buildSshArgs = (
+  profile: ConnectionProfile,
+  policy: HostKeyPolicy,
+  knownHostsPath?: string,
+  keyPathOverride?: string
+) => {
   const args: string[] = [];
 
   if (profile.port) {
     args.push('-p', String(profile.port));
   }
 
+  if (keyPathOverride) {
+    args.push('-i', keyPathOverride);
+  }
+
   if (policy === 'accept-new') {
     args.push('-o', 'StrictHostKeyChecking=accept-new');
+  } else if (policy === 'strict') {
+    args.push('-o', 'StrictHostKeyChecking=yes');
   }
 
   if (knownHostsPath) {
     args.push('-o', `UserKnownHostsFile=${knownHostsPath}`);
+  } else if (profile.knownHostsPath) {
+    args.push('-o', `UserKnownHostsFile=${profile.knownHostsPath}`);
   }
 
   args.push(`${profile.username}@${profile.host}`);
 
   return args;
+};
+
+const normalizePrivateKey = (value: string): string => {
+  const trimmed = value.replace(/\r\n/g, '\n').trim();
+  const lines = trimmed
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  return `${lines.join('\n')}\n`;
+};
+
+const isPrivateKeyFormatValid = (value: string): boolean => {
+  const lines = value.trim().split('\n');
+  if (lines.length < 3) {
+    return false;
+  }
+
+  const header = lines[0];
+  const footer = lines[lines.length - 1];
+  if (!header.startsWith('-----BEGIN ') || !header.endsWith('PRIVATE KEY-----')) {
+    return false;
+  }
+
+  if (!footer.startsWith('-----END ') || !footer.endsWith('PRIVATE KEY-----')) {
+    return false;
+  }
+
+  return true;
 };
 
 const validateProfile = (profile: ConnectionProfile): string[] => {
@@ -74,6 +155,18 @@ const validateProfile = (profile: ConnectionProfile): string[] => {
     errors.push('Port must be 1-65535.');
   }
 
+  if (profile.authMethod === 'pem' && !profile.keyPath && !profile.credentialId) {
+    errors.push('SSH key is required.');
+  }
+
+  if (profile.keyPath && !isAbsolute(profile.keyPath)) {
+    errors.push('Key path must be absolute.');
+  }
+
+  if (profile.knownHostsPath && !isAbsolute(profile.knownHostsPath)) {
+    errors.push('Known hosts path must be absolute.');
+  }
+
   return errors;
 };
 
@@ -87,8 +180,13 @@ const isLocalKnownHostsPath = (pathValue?: string): boolean => {
 
 export class SshPtyService {
   private readonly sessions = new Map<string, SessionRecord>();
+  private readonly outputBuffers = new Map<string, OutputBuffer>();
+  private readonly serviceName = 'wagterm';
 
-  startSession(request: SshSessionStartRequest, sender: WebContents): SshSessionStartResponse {
+  async startSession(
+    request: SshSessionStartRequest,
+    sender: WebContents
+  ): Promise<SshSessionStartResponse> {
     const validationErrors = validateProfile(request.profile);
 
     if (!isLocalKnownHostsPath(request.knownHostsPath)) {
@@ -99,8 +197,9 @@ export class SshPtyService {
       throw new Error(validationErrors.join(' '));
     }
 
-    const policy = resolveHostKeyPolicy(request.hostKeyPolicy);
-    const args = buildSshArgs(request.profile, policy, request.knownHostsPath);
+    const policy = resolveHostKeyPolicy(request.hostKeyPolicy ?? request.profile.hostKeyPolicy);
+    const { keyPath, tempKeyPath } = await this.resolveKeyPath(request.profile);
+    const args = buildSshArgs(request.profile, policy, request.knownHostsPath, keyPath);
 
     const sessionId = randomUUID();
     const pty = spawn('ssh', args, {
@@ -115,12 +214,16 @@ export class SshPtyService {
 
     const record: SessionRecord = {
       id: sessionId,
-      pty
+      pty,
+      tempKeyPath
     };
 
     this.sessions.set(sessionId, record);
+    this.outputBuffers.set(sessionId, new OutputBuffer(OUTPUT_BUFFER_LIMIT));
 
     pty.onData((data) => {
+      const buffer = this.outputBuffers.get(sessionId);
+      buffer?.append(data);
       const payload: SshSessionDataEvent = { sessionId, data };
       sender.send(IpcChannels.sshSessionData, payload);
     });
@@ -129,6 +232,8 @@ export class SshPtyService {
       const payload: SshSessionExitEvent = { sessionId, exitCode, signal };
       sender.send(IpcChannels.sshSessionExit, payload);
       this.sessions.delete(sessionId);
+      this.outputBuffers.delete(sessionId);
+      void this.cleanupTempKey(tempKeyPath);
     });
 
     return { sessionId };
@@ -159,6 +264,59 @@ export class SshPtyService {
     }
 
     record.pty.kill();
+    void this.cleanupTempKey(record.tempKeyPath);
     this.sessions.delete(request.sessionId);
+    this.outputBuffers.delete(request.sessionId);
+  }
+
+  getRecentOutput(request: SshSessionOutputRequest): SshSessionOutputResponse {
+    const buffer = this.outputBuffers.get(request.sessionId);
+    if (!buffer) {
+      throw new Error('SSH session not found.');
+    }
+
+    const { output, truncated } = buffer.getRecent(request.limit);
+    return { sessionId: request.sessionId, output, truncated };
+  }
+
+  private async resolveKeyPath(profile: ConnectionProfile): Promise<{ keyPath?: string; tempKeyPath?: string }> {
+    if (profile.authMethod !== 'pem') {
+      return {};
+    }
+
+    if (profile.keyPath) {
+      return { keyPath: profile.keyPath };
+    }
+
+    if (!profile.credentialId) {
+      return {};
+    }
+
+    const privateKey = await keytar.getPassword(this.serviceName, `${profile.credentialId}:private`);
+    if (!privateKey) {
+      throw new Error('No private key found for this credential. Re-add the SSH key.');
+    }
+
+    const dir = await mkdtemp(join(os.tmpdir(), 'wagterm-key-'));
+    const tempKeyPath = join(dir, 'id_key');
+    const normalized = normalizePrivateKey(privateKey);
+    if (!isPrivateKeyFormatValid(normalized)) {
+      await rm(dir, { recursive: true, force: true });
+      throw new Error('Stored private key has invalid format. Re-add the SSH key.');
+    }
+    await writeFile(tempKeyPath, normalized, { mode: 0o600 });
+
+    return { keyPath: tempKeyPath, tempKeyPath };
+  }
+
+  private async cleanupTempKey(tempKeyPath?: string): Promise<void> {
+    if (!tempKeyPath) {
+      return;
+    }
+    try {
+      await rm(dirname(tempKeyPath), { recursive: true, force: true });
+    } catch {
+      // Best-effort cleanup.
+    }
   }
 }

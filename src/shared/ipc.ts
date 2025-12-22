@@ -11,11 +11,14 @@ export const IpcChannels = {
   connectionsDelete: 'db:connections:delete',
   keysList: 'db:keys:list',
   keysAdd: 'db:keys:add',
+  keysUpdate: 'db:keys:update',
   keysDelete: 'db:keys:delete',
   sshSessionStart: 'ssh:session:start',
   sshSessionInput: 'ssh:session:input',
   sshSessionResize: 'ssh:session:resize',
   sshSessionClose: 'ssh:session:close',
+  sshSessionOutput: 'ssh:session:output',
+  aiGenerate: 'ai:generate',
   sshSessionData: 'ssh:session:data',
   sshSessionExit: 'ssh:session:exit'
 } as const;

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'path';
 import { IpcChannels } from '../shared/ipc';
+import { AiService } from './ai/aiService';
 import { SshMcpService } from './ssh/sshMcpService';
 import { SshPtyService } from './ssh/sshPtyService';
 import { initializeDatabase } from './storage/database';
@@ -27,6 +28,7 @@ const createWindow = () => {
 app.whenReady().then(() => {
   const sshService = new SshMcpService();
   const sshPtyService = new SshPtyService();
+  const aiService = new AiService(sshPtyService);
   const db = initializeDatabase(join(app.getPath('userData'), 'wagterm.sqlite'));
   const storageService = new StorageService(db);
 
@@ -56,6 +58,7 @@ app.whenReady().then(() => {
   );
   ipcMain.handle(IpcChannels.keysList, () => storageService.listKeys());
   ipcMain.handle(IpcChannels.keysAdd, (_event, request) => storageService.addKey(request));
+  ipcMain.handle(IpcChannels.keysUpdate, (_event, request) => storageService.updateKey(request));
   ipcMain.handle(IpcChannels.keysDelete, (_event, request) => storageService.deleteKey(request));
   ipcMain.handle(IpcChannels.sshSessionStart, (event, request) =>
     sshPtyService.startSession(request, event.sender)
@@ -66,8 +69,14 @@ app.whenReady().then(() => {
   ipcMain.handle(IpcChannels.sshSessionResize, (_event, request) =>
     sshPtyService.resize(request)
   );
+  ipcMain.handle(IpcChannels.sshSessionOutput, (_event, request) =>
+    sshPtyService.getRecentOutput(request)
+  );
   ipcMain.handle(IpcChannels.sshSessionClose, (_event, request) =>
     sshPtyService.close(request)
+  );
+  ipcMain.handle(IpcChannels.aiGenerate, (_event, request) =>
+    aiService.generate(request)
   );
 
   createWindow();

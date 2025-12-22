@@ -15,12 +15,21 @@ import type {
   ListConnectionProfilesResponse,
   ListKeysResponse,
   UpdateConnectionRequest,
-  UpdateConnectionResponse
+  UpdateConnectionResponse,
+  UpdateKeyRequest,
+  UpdateKeyResponse
 } from '../../shared/ssh';
 
 const SERVICE_NAME = 'wagterm';
+const privateKeyAccount = (id: string) => `${id}:private`;
+const passphraseAccount = (id: string) => `${id}:passphrase`;
+const connectionPasswordAccount = (id: string) => `${id}:password`;
 
-const validateConnectionProfile = (profile: ConnectionProfile): string[] => {
+const validateConnectionProfile = (
+  profile: ConnectionProfile,
+  password?: string,
+  requirePassword = false
+): string[] => {
   const errors: string[] = [];
 
   if (!profile.id.trim()) {
@@ -41,6 +50,22 @@ const validateConnectionProfile = (profile: ConnectionProfile): string[] => {
 
   if (!profile.port || profile.port <= 0 || profile.port > 65535) {
     errors.push('Port must be 1-65535.');
+  }
+
+  if (profile.authMethod === 'pem' && !profile.credentialId) {
+    errors.push('SSH key is required.');
+  }
+
+  if (profile.authMethod === 'password' && requirePassword && !password) {
+    errors.push('Password is required.');
+  }
+
+  if (profile.keyPath && !isAbsolute(profile.keyPath)) {
+    errors.push('Key path must be absolute.');
+  }
+
+  if (profile.knownHostsPath && !isAbsolute(profile.knownHostsPath)) {
+    errors.push('Known hosts path must be absolute.');
   }
 
   return errors;
@@ -68,15 +93,39 @@ export class StorageService {
   constructor(private readonly db: Database.Database) {}
 
   addConnection(request: AddConnectionRequest): AddConnectionResponse {
-    const errors = validateConnectionProfile(request.profile);
+    const errors = validateConnectionProfile(request.profile, request.password, true);
     if (errors.length > 0) {
       throw new Error(errors.join(' '));
     }
 
     const profile = request.profile;
     const statement = this.db.prepare(`
-      INSERT INTO connections (id, name, host, port, username, auth_method, credential_id, created_at)
-      VALUES (@id, @name, @host, @port, @username, @authMethod, @credentialId, @createdAt)
+      INSERT INTO connections (
+        id,
+        name,
+        host,
+        port,
+        username,
+        auth_method,
+        credential_id,
+        key_path,
+        host_key_policy,
+        known_hosts_path,
+        created_at
+      )
+      VALUES (
+        @id,
+        @name,
+        @host,
+        @port,
+        @username,
+        @authMethod,
+        @credentialId,
+        @keyPath,
+        @hostKeyPolicy,
+        @knownHostsPath,
+        @createdAt
+      )
     `);
 
     statement.run({
@@ -87,14 +136,21 @@ export class StorageService {
       username: profile.username,
       authMethod: profile.authMethod,
       credentialId: profile.credentialId ?? null,
+      keyPath: profile.keyPath ?? null,
+      hostKeyPolicy: profile.hostKeyPolicy ?? null,
+      knownHostsPath: profile.knownHostsPath ?? null,
       createdAt: new Date().toISOString()
     });
+
+    if (request.password) {
+      void keytar.setPassword(SERVICE_NAME, connectionPasswordAccount(profile.id), request.password);
+    }
 
     return { profile };
   }
 
   updateConnection(request: UpdateConnectionRequest): UpdateConnectionResponse {
-    const errors = validateConnectionProfile(request.profile);
+    const errors = validateConnectionProfile(request.profile, request.password, false);
     if (errors.length > 0) {
       throw new Error(errors.join(' '));
     }
@@ -107,7 +163,10 @@ export class StorageService {
           port = @port,
           username = @username,
           auth_method = @authMethod,
-          credential_id = @credentialId
+          credential_id = @credentialId,
+          key_path = @keyPath,
+          host_key_policy = @hostKeyPolicy,
+          known_hosts_path = @knownHostsPath
       WHERE id = @id
     `);
 
@@ -118,21 +177,43 @@ export class StorageService {
       port: profile.port,
       username: profile.username,
       authMethod: profile.authMethod,
-      credentialId: profile.credentialId ?? null
+      credentialId: profile.credentialId ?? null,
+      keyPath: profile.keyPath ?? null,
+      hostKeyPolicy: profile.hostKeyPolicy ?? null,
+      knownHostsPath: profile.knownHostsPath ?? null
     });
+
+    if (profile.authMethod === 'password') {
+      if (request.password) {
+        void keytar.setPassword(SERVICE_NAME, connectionPasswordAccount(profile.id), request.password);
+      }
+    } else {
+      void keytar.deletePassword(SERVICE_NAME, connectionPasswordAccount(profile.id));
+    }
 
     return { profile };
   }
 
   deleteConnection(request: DeleteConnectionRequest): DeleteConnectionResponse {
     this.db.prepare('DELETE FROM connections WHERE id = ?').run(request.id);
+    void keytar.deletePassword(SERVICE_NAME, connectionPasswordAccount(request.id));
     return { id: request.id };
   }
 
   listConnections(): ListConnectionProfilesResponse {
     const rows = this.db
       .prepare(
-        `SELECT id, name, host, port, username, auth_method as authMethod, credential_id as credentialId FROM connections`
+        `SELECT id,
+                name,
+                host,
+                port,
+                username,
+                auth_method as authMethod,
+                credential_id as credentialId,
+                key_path as keyPath,
+                host_key_policy as hostKeyPolicy,
+                known_hosts_path as knownHostsPath
+         FROM connections`
       )
       .all();
 
@@ -161,8 +242,53 @@ export class StorageService {
       createdAt: new Date().toISOString()
     });
 
-    if (request.secret) {
-      await keytar.setPassword(SERVICE_NAME, key.id, request.secret);
+    if (request.privateKey) {
+      await keytar.setPassword(SERVICE_NAME, privateKeyAccount(key.id), request.privateKey);
+    }
+
+    if (request.passphrase) {
+      await keytar.setPassword(SERVICE_NAME, passphraseAccount(key.id), request.passphrase);
+    }
+
+    return { key };
+  }
+
+  async updateKey(request: UpdateKeyRequest): Promise<UpdateKeyResponse> {
+    const errors = validateKeyRecord(request.key);
+    if (errors.length > 0) {
+      throw new Error(errors.join(' '));
+    }
+
+    const key = request.key;
+    const statement = this.db.prepare(`
+      UPDATE keys
+      SET name = @name,
+          type = @type,
+          public_key = @publicKey,
+          fingerprint = @fingerprint,
+          path = @path
+      WHERE id = @id
+    `);
+
+    statement.run({
+      id: key.id,
+      name: key.name,
+      type: key.type,
+      publicKey: key.publicKey ?? null,
+      fingerprint: key.fingerprint ?? null,
+      path: key.path ?? null
+    });
+
+    if (request.clearPrivateKey) {
+      await keytar.deletePassword(SERVICE_NAME, privateKeyAccount(key.id));
+    } else if (request.privateKey) {
+      await keytar.setPassword(SERVICE_NAME, privateKeyAccount(key.id), request.privateKey);
+    }
+
+    if (request.clearPassphrase) {
+      await keytar.deletePassword(SERVICE_NAME, passphraseAccount(key.id));
+    } else if (request.passphrase) {
+      await keytar.setPassword(SERVICE_NAME, passphraseAccount(key.id), request.passphrase);
     }
 
     return { key };
@@ -170,7 +296,8 @@ export class StorageService {
 
   async deleteKey(request: DeleteKeyRequest): Promise<DeleteKeyResponse> {
     this.db.prepare('DELETE FROM keys WHERE id = ?').run(request.id);
-    await keytar.deletePassword(SERVICE_NAME, request.id);
+    await keytar.deletePassword(SERVICE_NAME, privateKeyAccount(request.id));
+    await keytar.deletePassword(SERVICE_NAME, passphraseAccount(request.id));
     return { id: request.id };
   }
 

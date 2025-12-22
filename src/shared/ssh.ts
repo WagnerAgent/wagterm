@@ -10,6 +10,9 @@ export type ConnectionProfile = {
   username: string;
   authMethod: SshAuthMethod;
   credentialId?: string;
+  keyPath?: string;
+  hostKeyPolicy?: HostKeyPolicy;
+  knownHostsPath?: string;
 };
 
 export type KeyRecord = {
@@ -73,6 +76,7 @@ export type ListMcpServersResponse = {
 
 export type AddConnectionRequest = {
   profile: ConnectionProfile;
+  password?: string;
 };
 
 export type AddConnectionResponse = {
@@ -81,6 +85,7 @@ export type AddConnectionResponse = {
 
 export type UpdateConnectionRequest = {
   profile: ConnectionProfile;
+  password?: string;
 };
 
 export type UpdateConnectionResponse = {
@@ -101,10 +106,23 @@ export type ListConnectionProfilesResponse = {
 
 export type AddKeyRequest = {
   key: KeyRecord;
-  secret?: string;
+  privateKey?: string;
+  passphrase?: string;
 };
 
 export type AddKeyResponse = {
+  key: KeyRecord;
+};
+
+export type UpdateKeyRequest = {
+  key: KeyRecord;
+  privateKey?: string;
+  passphrase?: string;
+  clearPrivateKey?: boolean;
+  clearPassphrase?: boolean;
+};
+
+export type UpdateKeyResponse = {
   key: KeyRecord;
 };
 
@@ -147,6 +165,17 @@ export type SshSessionResizeRequest = {
 
 export type SshSessionCloseRequest = {
   sessionId: string;
+};
+
+export type SshSessionOutputRequest = {
+  sessionId: string;
+  limit?: number;
+};
+
+export type SshSessionOutputResponse = {
+  sessionId: string;
+  output: string;
+  truncated: boolean;
 };
 
 export type SshSessionDataEvent = {

@@ -7,6 +7,8 @@ import type {
   AddConnectionResponse,
   AddKeyRequest,
   AddKeyResponse,
+  UpdateKeyRequest,
+  UpdateKeyResponse,
   ConnectRequest,
   ConnectResponse,
   DeleteConnectionRequest,
@@ -22,12 +24,15 @@ import type {
   SshSessionDataEvent,
   SshSessionExitEvent,
   SshSessionInputRequest,
+  SshSessionOutputRequest,
+  SshSessionOutputResponse,
   SshSessionResizeRequest,
   SshSessionStartRequest,
   SshSessionStartResponse,
   UpdateConnectionRequest,
   UpdateConnectionResponse
 } from '../shared/ssh';
+import type { AiGenerateRequest, AiGenerateResponse } from '../shared/ai';
 
 contextBridge.exposeInMainWorld('wagterm', {
   getAppInfo: () => ipcRenderer.invoke(IpcChannels.appInfo),
@@ -43,6 +48,8 @@ contextBridge.exposeInMainWorld('wagterm', {
     listKeys: (): Promise<ListKeysResponse> => ipcRenderer.invoke(IpcChannels.keysList),
     addKey: (request: AddKeyRequest): Promise<AddKeyResponse> =>
       ipcRenderer.invoke(IpcChannels.keysAdd, request),
+    updateKey: (request: UpdateKeyRequest): Promise<UpdateKeyResponse> =>
+      ipcRenderer.invoke(IpcChannels.keysUpdate, request),
     deleteKey: (request: DeleteKeyRequest): Promise<DeleteKeyResponse> =>
       ipcRenderer.invoke(IpcChannels.keysDelete, request)
   },
@@ -65,6 +72,8 @@ contextBridge.exposeInMainWorld('wagterm', {
       ipcRenderer.invoke(IpcChannels.sshSessionInput, request),
     resize: (request: SshSessionResizeRequest): Promise<void> =>
       ipcRenderer.invoke(IpcChannels.sshSessionResize, request),
+    getRecentOutput: (request: SshSessionOutputRequest): Promise<SshSessionOutputResponse> =>
+      ipcRenderer.invoke(IpcChannels.sshSessionOutput, request),
     close: (request: SshSessionCloseRequest): Promise<void> =>
       ipcRenderer.invoke(IpcChannels.sshSessionClose, request),
     onData: (listener: (event: SshSessionDataEvent) => void) => {
@@ -79,5 +88,9 @@ contextBridge.exposeInMainWorld('wagterm', {
       );
       return () => ipcRenderer.removeAllListeners(IpcChannels.sshSessionExit);
     }
+  },
+  ai: {
+    generate: (request: AiGenerateRequest): Promise<AiGenerateResponse> =>
+      ipcRenderer.invoke(IpcChannels.aiGenerate, request)
   }
 });

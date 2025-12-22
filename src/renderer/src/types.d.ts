@@ -19,6 +19,8 @@ declare global {
             username: string;
             authMethod: 'pem' | 'password';
             credentialId?: string;
+            hostKeyPolicy?: 'strict' | 'accept-new';
+            knownHostsPath?: string;
           }>;
         }>;
         addConnection: (request: {
@@ -30,7 +32,10 @@ declare global {
             username: string;
             authMethod: 'pem' | 'password';
             credentialId?: string;
+            hostKeyPolicy?: 'strict' | 'accept-new';
+            knownHostsPath?: string;
           };
+          password?: string;
         }) => Promise<{ profile: { id: string } }>;
         updateConnection: (request: {
           profile: {
@@ -41,7 +46,10 @@ declare global {
             username: string;
             authMethod: 'pem' | 'password';
             credentialId?: string;
+            hostKeyPolicy?: 'strict' | 'accept-new';
+            knownHostsPath?: string;
           };
+          password?: string;
         }) => Promise<{ profile: { id: string } }>;
         deleteConnection: (request: { id: string }) => Promise<{ id: string }>;
         listKeys: () => Promise<{
@@ -50,6 +58,7 @@ declare global {
             name: string;
             type: 'ed25519' | 'rsa' | 'pem';
             fingerprint?: string;
+            path?: string;
           }>;
         }>;
         addKey: (request: {
@@ -61,7 +70,22 @@ declare global {
             fingerprint?: string;
             path?: string;
           };
-          secret?: string;
+          privateKey?: string;
+          passphrase?: string;
+        }) => Promise<{ key: { id: string } }>;
+        updateKey: (request: {
+          key: {
+            id: string;
+            name: string;
+            type: 'ed25519' | 'rsa' | 'pem';
+            publicKey?: string;
+            fingerprint?: string;
+            path?: string;
+          };
+          privateKey?: string;
+          passphrase?: string;
+          clearPrivateKey?: boolean;
+          clearPassphrase?: boolean;
         }) => Promise<{ key: { id: string } }>;
       };
       ssh: {
@@ -77,6 +101,8 @@ declare global {
             username: string;
             authMethod: 'pem' | 'password';
             credentialId?: string;
+            hostKeyPolicy?: 'strict' | 'accept-new';
+            knownHostsPath?: string;
           };
           cols: number;
           rows: number;
@@ -84,11 +110,43 @@ declare global {
           knownHostsPath?: string;
         }) => Promise<{ sessionId: string }>;
         sendInput: (request: { sessionId: string; data: string }) => Promise<void>;
+        getRecentOutput: (request: { sessionId: string; limit?: number }) => Promise<{
+          sessionId: string;
+          output: string;
+          truncated: boolean;
+        }>;
         close: (request: { sessionId: string }) => Promise<void>;
         onData: (listener: (event: { sessionId: string; data: string }) => void) => () => void;
         onExit: (
           listener: (event: { sessionId: string; exitCode: number | null; signal?: number }) => void
         ) => () => void;
+      };
+      ai: {
+        generate: (request: {
+          sessionId: string;
+          prompt: string;
+          model: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
+          session: {
+            id: string;
+            name?: string;
+            host: string;
+            username: string;
+            port: number;
+          };
+          outputLimit?: number;
+        }) => Promise<{
+          response: {
+            commands: Array<{
+              id?: string;
+              command: string;
+              rationale?: string;
+              risk?: 'low' | 'medium' | 'high';
+              requiresApproval: boolean;
+            }>;
+            message?: string;
+          };
+          rawText?: string;
+        }>;
       };
     };
   }

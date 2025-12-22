@@ -1,3 +1,5 @@
+@import '@xterm/xterm/css/xterm.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -48,4 +50,15 @@
     margin: 0;
     min-height: 100vh;
   }
+}
+
+.wagterm-terminal {
+  height: 100%;
+  width: 100%;
+}
+
+.wagterm-terminal .xterm,
+.wagterm-terminal .xterm-viewport,
+.wagterm-terminal .xterm-screen {
+  height: 100%;
 }
