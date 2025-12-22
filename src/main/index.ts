@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'path';
 import { IpcChannels } from '../shared/ipc';

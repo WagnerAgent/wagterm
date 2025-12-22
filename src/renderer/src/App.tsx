@@ -38,6 +38,15 @@ type TerminalSession = {
   connected: boolean;
 };
 
+type CommandProposal = {
+  id: string;
+  command: string;
+  rationale?: string;
+  risk?: 'low' | 'medium' | 'high';
+  requiresApproval: boolean;
+  status: 'pending' | 'approved' | 'rejected';
+};
+
 const sections: Array<{ id: SectionKey; label: string; icon: React.ReactNode }> = [
   { id: 'connections', label: 'Connections', icon: <Server className="h-4 w-4" /> },
   { id: 'keys', label: 'Keys', icon: <Key className="h-4 w-4" /> },
@@ -115,6 +124,7 @@ const App = () => {
   const [selectedModel, setSelectedModel] = useState<
     'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5'
   >('gpt-5.2');
+  const [commandProposals, setCommandProposals] = useState<Map<string, CommandProposal[]>>(new Map());
 
   const sessionReceivedData = useRef<Map<string, boolean>>(new Map());
   const connectTimeouts = useRef<Map<string, number>>(new Map());
@@ -194,6 +204,11 @@ const App = () => {
 
     // Remove conversation messages for this session
     setConversationMessages(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(sessionId);
+      return newMap;
+    });
+    setCommandProposals(prev => {
       const newMap = new Map(prev);
       newMap.delete(sessionId);
       return newMap;
@@ -495,17 +510,22 @@ const App = () => {
       });
 
       const commands = aiResponse.response.commands ?? [];
-      const messageParts: string[] = [];
-      if (aiResponse.response.message) {
-        messageParts.push(aiResponse.response.message);
-      }
-      if (commands.length > 0) {
-        const commandLines = commands.map((cmd) => `- ${cmd.command}`).join('\n');
-        messageParts.push(`Proposed commands:\n${commandLines}`);
-      }
-
       const assistantMessage =
-        messageParts.length > 0 ? messageParts.join('\n\n') : 'AI response received.';
+        aiResponse.response.message ?? (commands.length > 0 ? 'AI proposed commands.' : 'AI response received.');
+
+      setCommandProposals(prev => {
+        const newMap = new Map(prev);
+        const proposals: CommandProposal[] = commands.map((cmd) => ({
+          id: cmd.id ?? crypto.randomUUID(),
+          command: cmd.command,
+          rationale: cmd.rationale,
+          risk: cmd.risk,
+          requiresApproval: cmd.requiresApproval,
+          status: 'pending'
+        }));
+        newMap.set(sessionId, proposals);
+        return newMap;
+      });
 
       setConversationMessages(prev => {
         const newMap = new Map(prev);
@@ -522,6 +542,48 @@ const App = () => {
         return newMap;
       });
     }
+  };
+
+  const updateProposalStatus = (sessionId: string, proposalId: string, status: CommandProposal['status']) => {
+    setCommandProposals(prev => {
+      const newMap = new Map(prev);
+      const proposals = newMap.get(sessionId) ?? [];
+      newMap.set(
+        sessionId,
+        proposals.map((proposal) =>
+          proposal.id === proposalId ? { ...proposal, status } : proposal
+        )
+      );
+      return newMap;
+    });
+  };
+
+  const handleApproveCommand = (sessionId: string, proposalId: string) => {
+    const proposals = commandProposals.get(sessionId) ?? [];
+    const proposal = proposals.find((item) => item.id === proposalId);
+    if (!proposal) {
+      return;
+    }
+
+    updateProposalStatus(sessionId, proposalId, 'approved');
+    void window.wagterm.sshSession.sendInput({
+      sessionId,
+      data: `${proposal.command}\n`
+    });
+
+    setConversationMessages(prev => {
+      const newMap = new Map(prev);
+      const messages = newMap.get(sessionId) || [];
+      newMap.set(sessionId, [
+        ...messages,
+        { role: 'assistant', content: `Executed: ${proposal.command}` }
+      ]);
+      return newMap;
+    });
+  };
+
+  const handleRejectCommand = (sessionId: string, proposalId: string) => {
+    updateProposalStatus(sessionId, proposalId, 'rejected');
   };
 
   useEffect(() => {
@@ -1167,6 +1229,58 @@ const App = () => {
               {/* AI Conversation Pane */}
               <aside className="w-96 bg-card flex flex-col">
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {(commandProposals.get(session.id)?.length ?? 0) > 0 && (
+                    <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-3">
+                      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Proposed Commands</div>
+                      {(commandProposals.get(session.id) ?? []).map((proposal) => (
+                        <div key={proposal.id} className="rounded-lg border border-border bg-card p-3 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <code className="text-xs text-foreground font-mono break-all">{proposal.command}</code>
+                            {proposal.risk && (
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                                  proposal.risk === 'high'
+                                    ? 'bg-red-500/20 text-red-200'
+                                    : proposal.risk === 'medium'
+                                      ? 'bg-yellow-500/20 text-yellow-200'
+                                      : 'bg-emerald-500/20 text-emerald-200'
+                                }`}
+                              >
+                                {proposal.risk}
+                              </span>
+                            )}
+                          </div>
+
+                          {proposal.rationale && (
+                            <p className="text-xs text-muted-foreground">{proposal.rationale}</p>
+                          )}
+
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleApproveCommand(session.id, proposal.id)}
+                              disabled={proposal.status !== 'pending'}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleRejectCommand(session.id, proposal.id)}
+                              disabled={proposal.status !== 'pending'}
+                            >
+                              Reject
+                            </Button>
+                            {proposal.status !== 'pending' && (
+                              <span className="text-[11px] uppercase text-muted-foreground">
+                                {proposal.status}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {(!conversationMessages.get(session.id) || conversationMessages.get(session.id)!.length === 0) ? (
                     <div className="flex flex-col items-center justify-center h-full text-center px-4">
                       <div className="bg-muted/50 rounded-full p-4 mb-4">

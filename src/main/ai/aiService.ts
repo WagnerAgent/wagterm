@@ -78,14 +78,16 @@ export class AiService {
         input: [
           {
             role: 'system',
-            content: [{ type: 'text', text: system }]
+            content: [{ type: 'input_text', text: system }]
           },
           {
             role: 'user',
-            content: [{ type: 'text', text: user }]
+            content: [{ type: 'input_text', text: user }]
           }
         ],
-        response_format: { type: 'json_object' },
+        text: {
+          format: { type: 'json_object' }
+        },
         temperature: 0.2
       })
     });
