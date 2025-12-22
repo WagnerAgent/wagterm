@@ -3,15 +3,49 @@ import { IpcChannels } from '../shared/ipc';
 import type {
   AddMcpServerRequest,
   AddMcpServerResponse,
+  AddConnectionRequest,
+  AddConnectionResponse,
+  AddKeyRequest,
+  AddKeyResponse,
   ConnectRequest,
   ConnectResponse,
+  DeleteConnectionRequest,
+  DeleteConnectionResponse,
+  DeleteKeyRequest,
+  DeleteKeyResponse,
   DisconnectResponse,
+  ListConnectionProfilesResponse,
   ListConnectionsResponse,
-  ListMcpServersResponse
+  ListKeysResponse,
+  ListMcpServersResponse,
+  SshSessionCloseRequest,
+  SshSessionDataEvent,
+  SshSessionExitEvent,
+  SshSessionInputRequest,
+  SshSessionResizeRequest,
+  SshSessionStartRequest,
+  SshSessionStartResponse,
+  UpdateConnectionRequest,
+  UpdateConnectionResponse
 } from '../shared/ssh';
 
 contextBridge.exposeInMainWorld('wagterm', {
   getAppInfo: () => ipcRenderer.invoke(IpcChannels.appInfo),
+  storage: {
+    listConnections: (): Promise<ListConnectionProfilesResponse> =>
+      ipcRenderer.invoke(IpcChannels.connectionsList),
+    addConnection: (request: AddConnectionRequest): Promise<AddConnectionResponse> =>
+      ipcRenderer.invoke(IpcChannels.connectionsAdd, request),
+    updateConnection: (request: UpdateConnectionRequest): Promise<UpdateConnectionResponse> =>
+      ipcRenderer.invoke(IpcChannels.connectionsUpdate, request),
+    deleteConnection: (request: DeleteConnectionRequest): Promise<DeleteConnectionResponse> =>
+      ipcRenderer.invoke(IpcChannels.connectionsDelete, request),
+    listKeys: (): Promise<ListKeysResponse> => ipcRenderer.invoke(IpcChannels.keysList),
+    addKey: (request: AddKeyRequest): Promise<AddKeyResponse> =>
+      ipcRenderer.invoke(IpcChannels.keysAdd, request),
+    deleteKey: (request: DeleteKeyRequest): Promise<DeleteKeyResponse> =>
+      ipcRenderer.invoke(IpcChannels.keysDelete, request)
+  },
   ssh: {
     listMcpServers: (): Promise<ListMcpServersResponse> =>
       ipcRenderer.invoke(IpcChannels.listMcpServers),
@@ -23,5 +57,27 @@ contextBridge.exposeInMainWorld('wagterm', {
       ipcRenderer.invoke(IpcChannels.connect, request),
     disconnect: (connectionId: string): Promise<DisconnectResponse> =>
       ipcRenderer.invoke(IpcChannels.disconnect, connectionId)
+  },
+  sshSession: {
+    start: (request: SshSessionStartRequest): Promise<SshSessionStartResponse> =>
+      ipcRenderer.invoke(IpcChannels.sshSessionStart, request),
+    sendInput: (request: SshSessionInputRequest): Promise<void> =>
+      ipcRenderer.invoke(IpcChannels.sshSessionInput, request),
+    resize: (request: SshSessionResizeRequest): Promise<void> =>
+      ipcRenderer.invoke(IpcChannels.sshSessionResize, request),
+    close: (request: SshSessionCloseRequest): Promise<void> =>
+      ipcRenderer.invoke(IpcChannels.sshSessionClose, request),
+    onData: (listener: (event: SshSessionDataEvent) => void) => {
+      ipcRenderer.on(IpcChannels.sshSessionData, (_event, payload: SshSessionDataEvent) =>
+        listener(payload)
+      );
+      return () => ipcRenderer.removeAllListeners(IpcChannels.sshSessionData);
+    },
+    onExit: (listener: (event: SshSessionExitEvent) => void) => {
+      ipcRenderer.on(IpcChannels.sshSessionExit, (_event, payload: SshSessionExitEvent) =>
+        listener(payload)
+      );
+      return () => ipcRenderer.removeAllListeners(IpcChannels.sshSessionExit);
+    }
   }
 });

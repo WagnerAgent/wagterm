@@ -2,6 +2,9 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'path';
 import { IpcChannels } from '../shared/ipc';
 import { SshMcpService } from './ssh/sshMcpService';
+import { SshPtyService } from './ssh/sshPtyService';
+import { initializeDatabase } from './storage/database';
+import { StorageService } from './storage/storageService';
 
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
@@ -23,6 +26,9 @@ const createWindow = () => {
 
 app.whenReady().then(() => {
   const sshService = new SshMcpService();
+  const sshPtyService = new SshPtyService();
+  const db = initializeDatabase(join(app.getPath('userData'), 'wagterm.sqlite'));
+  const storageService = new StorageService(db);
 
   ipcMain.handle(IpcChannels.appInfo, () => ({
     name: app.getName(),
@@ -37,6 +43,31 @@ app.whenReady().then(() => {
   ipcMain.handle(IpcChannels.connect, (_event, request) => sshService.connect(request));
   ipcMain.handle(IpcChannels.disconnect, (_event, connectionId) =>
     sshService.disconnect(connectionId)
+  );
+  ipcMain.handle(IpcChannels.connectionsList, () => storageService.listConnections());
+  ipcMain.handle(IpcChannels.connectionsAdd, (_event, request) =>
+    storageService.addConnection(request)
+  );
+  ipcMain.handle(IpcChannels.connectionsUpdate, (_event, request) =>
+    storageService.updateConnection(request)
+  );
+  ipcMain.handle(IpcChannels.connectionsDelete, (_event, request) =>
+    storageService.deleteConnection(request)
+  );
+  ipcMain.handle(IpcChannels.keysList, () => storageService.listKeys());
+  ipcMain.handle(IpcChannels.keysAdd, (_event, request) => storageService.addKey(request));
+  ipcMain.handle(IpcChannels.keysDelete, (_event, request) => storageService.deleteKey(request));
+  ipcMain.handle(IpcChannels.sshSessionStart, (event, request) =>
+    sshPtyService.startSession(request, event.sender)
+  );
+  ipcMain.handle(IpcChannels.sshSessionInput, (_event, request) =>
+    sshPtyService.sendInput(request)
+  );
+  ipcMain.handle(IpcChannels.sshSessionResize, (_event, request) =>
+    sshPtyService.resize(request)
+  );
+  ipcMain.handle(IpcChannels.sshSessionClose, (_event, request) =>
+    sshPtyService.close(request)
   );
 
   createWindow();

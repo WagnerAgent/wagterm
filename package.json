@@ -10,15 +10,22 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "lint": "eslint . --ext .ts,.js"
+    "lint": "eslint . --ext .ts,.js",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3,keytar"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.5.0",
+    "keytar": "^7.9.0",
+    "node-pty": "^1.1.0"
   },
   "devDependencies": {
-    "electron": "^30.0.0",
-    "electron-vite": "^2.0.0",
-    "eslint": "^9.0.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
+    "electron-rebuild": "^3.2.9",
+    "electron": "^39.2.7",
+    "electron-vite": "^5.0.0",
+    "eslint": "^9.39.2",
+    "@typescript-eslint/eslint-plugin": "^8.50.1",
+    "@typescript-eslint/parser": "^8.50.1",
     "typescript": "^5.4.0",
-    "vite": "^5.0.0"
+    "vite": "^6.1.6"
   }
 }

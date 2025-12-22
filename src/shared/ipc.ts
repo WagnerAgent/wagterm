@@ -4,5 +4,18 @@ export const IpcChannels = {
   addMcpServer: 'ssh:mcp:add',
   connect: 'ssh:connect',
   disconnect: 'ssh:disconnect',
-  listConnections: 'ssh:connections:list'
+  listConnections: 'ssh:connections:list',
+  connectionsList: 'db:connections:list',
+  connectionsAdd: 'db:connections:add',
+  connectionsUpdate: 'db:connections:update',
+  connectionsDelete: 'db:connections:delete',
+  keysList: 'db:keys:list',
+  keysAdd: 'db:keys:add',
+  keysDelete: 'db:keys:delete',
+  sshSessionStart: 'ssh:session:start',
+  sshSessionInput: 'ssh:session:input',
+  sshSessionResize: 'ssh:session:resize',
+  sshSessionClose: 'ssh:session:close',
+  sshSessionData: 'ssh:session:data',
+  sshSessionExit: 'ssh:session:exit'
 } as const;
