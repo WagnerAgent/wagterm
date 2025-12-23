@@ -5,11 +5,20 @@
     "moduleResolution": "Node",
     "strict": true,
     "jsx": "react-jsx",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "baseUrl": ".",
     "paths": {
-      "@renderer/*": ["src/renderer/src/*"]
+      "@renderer/*": [
+        "src/renderer/src/*"
+      ]
     },
-    "types": ["vite/client"]
+    "types": [
+      "vite/client"
+    ]
   },
-  "include": ["src/renderer/src", "src/renderer/index.html"]
+  "include": [
+    "src/renderer/src",
+    "src/renderer/index.html"
+  ]
 }

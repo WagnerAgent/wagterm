@@ -32,7 +32,14 @@ import type {
   UpdateConnectionRequest,
   UpdateConnectionResponse
 } from '../shared/ssh';
-import type { AiGenerateRequest, AiGenerateResponse } from '../shared/ai';
+import type {
+  AiGenerateRequest,
+  AiGenerateResponse,
+  AiStreamChunkEvent,
+  AiStreamCompleteEvent,
+  AiStreamErrorEvent,
+  AiStreamStartRequest
+} from '../shared/assistant';
 
 contextBridge.exposeInMainWorld('wagterm', {
   getAppInfo: () => ipcRenderer.invoke(IpcChannels.appInfo),
@@ -89,8 +96,28 @@ contextBridge.exposeInMainWorld('wagterm', {
       return () => ipcRenderer.removeAllListeners(IpcChannels.sshSessionExit);
     }
   },
-  ai: {
+  assistant: {
     generate: (request: AiGenerateRequest): Promise<AiGenerateResponse> =>
-      ipcRenderer.invoke(IpcChannels.aiGenerate, request)
+      ipcRenderer.invoke(IpcChannels.assistantGenerate, request),
+    stream: (request: AiStreamStartRequest): Promise<void> =>
+      ipcRenderer.invoke(IpcChannels.assistantStreamStart, request),
+    onChunk: (listener: (event: AiStreamChunkEvent) => void) => {
+      ipcRenderer.on(IpcChannels.assistantStreamChunk, (_event, payload: AiStreamChunkEvent) =>
+        listener(payload)
+      );
+      return () => ipcRenderer.removeAllListeners(IpcChannels.assistantStreamChunk);
+    },
+    onComplete: (listener: (event: AiStreamCompleteEvent) => void) => {
+      ipcRenderer.on(IpcChannels.assistantStreamComplete, (_event, payload: AiStreamCompleteEvent) =>
+        listener(payload)
+      );
+      return () => ipcRenderer.removeAllListeners(IpcChannels.assistantStreamComplete);
+    },
+    onError: (listener: (event: AiStreamErrorEvent) => void) => {
+      ipcRenderer.on(IpcChannels.assistantStreamError, (_event, payload: AiStreamErrorEvent) =>
+        listener(payload)
+      );
+      return () => ipcRenderer.removeAllListeners(IpcChannels.assistantStreamError);
+    }
   }
 });

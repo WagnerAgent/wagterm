@@ -5,13 +5,15 @@ import type { CommandProposal, TerminalSession } from './types';
 
 type AiPaneProps = {
   session: TerminalSession;
-  conversationMessages: Map<string, Array<{ role: 'user' | 'assistant'; content: string }>>;
+  conversationMessages: Map<
+    string,
+    Array<{ id?: string; role: 'user' | 'assistant'; kind: 'text' | 'proposal'; content?: string; proposal?: CommandProposal }>
+  >;
   conversationInput: string;
   setConversationInput: (value: string) => void;
   selectedModel: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
   setSelectedModel: (value: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5') => void;
   handleSendConversation: () => void;
-  commandProposals: Map<string, CommandProposal[]>;
   handleApproveCommand: (sessionId: string, proposalId: string) => void;
   handleRejectCommand: (sessionId: string, proposalId: string) => void;
 };
@@ -24,65 +26,14 @@ const AiPane = ({
   selectedModel,
   setSelectedModel,
   handleSendConversation,
-  commandProposals,
   handleApproveCommand,
   handleRejectCommand
 }: AiPaneProps) => {
-  const proposals = commandProposals.get(session.id) ?? [];
   const messages = conversationMessages.get(session.id) ?? [];
 
   return (
     <aside className="w-96 bg-card flex flex-col">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {proposals.length > 0 && (
-          <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-3">
-            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Proposed Commands</div>
-            {proposals.map((proposal) => (
-              <div key={proposal.id} className="rounded-lg border border-border bg-card p-3 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <code className="text-xs text-foreground font-mono break-all">{proposal.command}</code>
-                  {proposal.risk && (
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                        proposal.risk === 'high'
-                          ? 'bg-red-500/20 text-red-200'
-                          : proposal.risk === 'medium'
-                            ? 'bg-yellow-500/20 text-yellow-200'
-                            : 'bg-emerald-500/20 text-emerald-200'
-                      }`}
-                    >
-                      {proposal.risk}
-                    </span>
-                  )}
-                </div>
-
-                {proposal.rationale && <p className="text-xs text-muted-foreground">{proposal.rationale}</p>}
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => handleApproveCommand(session.id, proposal.id)}
-                    disabled={proposal.status !== 'pending'}
-                  >
-                    Approve
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleRejectCommand(session.id, proposal.id)}
-                    disabled={proposal.status !== 'pending'}
-                  >
-                    Reject
-                  </Button>
-                  {proposal.status !== 'pending' && (
-                    <span className="text-[11px] uppercase text-muted-foreground">{proposal.status}</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
             <div className="bg-muted/50 rounded-full p-4 mb-4">
@@ -95,14 +46,58 @@ const AiPane = ({
           </div>
         ) : (
           messages.map((msg, idx) => (
-            <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`rounded-lg px-4 py-2 max-w-[85%] ${
-                  msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
-                }`}
-              >
-                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-              </div>
+            <div key={msg.id ?? idx} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {msg.kind === 'proposal' && msg.proposal ? (
+                <div className="rounded-lg border border-border bg-card p-3 space-y-2 max-w-[85%]">
+                  <div className="flex items-start justify-between gap-2">
+                    <code className="text-xs text-foreground font-mono break-all">{msg.proposal.command}</code>
+                    {msg.proposal.risk && (
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                          msg.proposal.risk === 'high'
+                            ? 'bg-red-500/20 text-red-200'
+                            : msg.proposal.risk === 'medium'
+                              ? 'bg-yellow-500/20 text-yellow-200'
+                              : 'bg-emerald-500/20 text-emerald-200'
+                        }`}
+                      >
+                        {msg.proposal.risk}
+                      </span>
+                    )}
+                  </div>
+
+                  {msg.proposal.rationale && <p className="text-xs text-muted-foreground">{msg.proposal.rationale}</p>}
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => handleApproveCommand(session.id, msg.proposal!.id)}
+                      disabled={msg.proposal.status !== 'pending'}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleRejectCommand(session.id, msg.proposal!.id)}
+                      disabled={msg.proposal.status !== 'pending'}
+                    >
+                      Reject
+                    </Button>
+                    {msg.proposal.status !== 'pending' && (
+                      <span className="text-[11px] uppercase text-muted-foreground">{msg.proposal.status}</span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className={`rounded-lg px-4 py-2 max-w-[85%] ${
+                    msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
+                  }`}
+                >
+                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                </div>
+              )}
             </div>
           ))
         )}

@@ -121,7 +121,7 @@ declare global {
           listener: (event: { sessionId: string; exitCode: number | null; signal?: number }) => void
         ) => () => void;
       };
-      ai: {
+      assistant: {
         generate: (request: {
           sessionId: string;
           prompt: string;
@@ -144,9 +144,41 @@ declare global {
               requiresApproval: boolean;
             }>;
             message?: string;
+            intent?: 'chat' | 'plan' | 'command';
           };
           rawText?: string;
         }>;
+        stream: (request: {
+          requestId: string;
+          sessionId: string;
+          prompt: string;
+          model: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
+          session: {
+            id: string;
+            name?: string;
+            host: string;
+            username: string;
+            port: number;
+          };
+          outputLimit?: number;
+        }) => Promise<void>;
+        onChunk: (listener: (event: { requestId: string; sessionId: string; text: string }) => void) => () => void;
+        onComplete: (listener: (event: {
+          requestId: string;
+          sessionId: string;
+          response: {
+            commands: Array<{
+              id?: string;
+              command: string;
+              rationale?: string;
+              risk?: 'low' | 'medium' | 'high';
+              requiresApproval: boolean;
+            }>;
+            message?: string;
+          };
+          rawText?: string;
+        }) => void) => () => void;
+        onError: (listener: (event: { requestId: string; sessionId: string; error: string }) => void) => () => void;
       };
     };
   }
