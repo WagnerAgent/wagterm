@@ -10,12 +10,12 @@ type Message = {
   proposal?: CommandProposal;
 };
 
-type UseAiChatOptions = {
+type UseAssistantChatOptions = {
   getSessionById: (sessionId: string) => TerminalSession | undefined;
   getActiveTab: () => string;
 };
 
-export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOptions) => {
+export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAssistantChatOptions) => {
   const [conversationMessages, setConversationMessages] = useState<Map<string, Message[]>>(new Map());
   const [planStepsBySession, setPlanStepsBySession] = useState<Map<string, AgentPlanStep[]>>(new Map());
   const [conversationInput, setConversationInput] = useState('');
@@ -55,7 +55,12 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOpti
     conversationMessagesRef.current = conversationMessages;
   }, [conversationMessages]);
 
-  const updateProposalStatus = (sessionId: string, proposalId: string, status: CommandProposal['status']) => {
+  const updateProposalStatus = (
+    sessionId: string,
+    proposalId: string,
+    status: CommandProposal['status'],
+    statusMessage?: string
+  ) => {
     setConversationMessages((prev) => {
       const newMap = new Map(prev);
       const messages = newMap.get(sessionId) ?? [];
@@ -69,7 +74,8 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOpti
             ...message,
             proposal: {
               ...message.proposal,
-              status
+              status,
+              statusMessage: statusMessage ?? message.proposal.statusMessage
             }
           };
         })
@@ -244,24 +250,16 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOpti
         return;
       }
 
-      if (event.result.status === 'cancelled' || event.result.status === 'error') {
-        updateProposalStatus(event.sessionId, toolCallId, 'rejected');
-      }
-
-      const messageText =
+      const statusMessage =
         event.result.output ||
         event.result.error ||
         (event.result.status === 'cancelled' ? 'Command was rejected.' : 'Command completed.');
 
-      setConversationMessages((prev) => {
-        const newMap = new Map(prev);
-        const messages = newMap.get(event.sessionId) ?? [];
-        newMap.set(event.sessionId, [
-          ...messages,
-          { id: crypto.randomUUID(), role: 'assistant', kind: 'text', content: messageText }
-        ]);
-        return newMap;
-      });
+      if (event.result.status === 'success') {
+        updateProposalStatus(event.sessionId, toolCallId, 'approved', statusMessage);
+      } else {
+        updateProposalStatus(event.sessionId, toolCallId, 'rejected', statusMessage);
+      }
     });
 
     return () => {
