@@ -2,7 +2,15 @@ import 'dotenv/config';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'path';
 import { IpcChannels } from '../shared/ipc';
+import type {
+  ClearAiKeyRequest,
+  ClearAiKeyResponse,
+  GetAiKeysResponse,
+  SetAiKeyRequest,
+  SetAiKeyResponse
+} from '../shared/settings';
 import { AssistantService } from './assistant/assistantService';
+import { clearAiKey, getAiKey, setAiKey } from './security/credentials';
 import { SshMcpService } from './ssh/sshMcpService';
 import { SshPtyService } from './ssh/sshPtyService';
 import { initializeDatabase } from './storage/database';
@@ -61,6 +69,33 @@ app.whenReady().then(() => {
   ipcMain.handle(IpcChannels.keysAdd, (_event, request) => storageService.addKey(request));
   ipcMain.handle(IpcChannels.keysUpdate, (_event, request) => storageService.updateKey(request));
   ipcMain.handle(IpcChannels.keysDelete, (_event, request) => storageService.deleteKey(request));
+  ipcMain.handle(IpcChannels.settingsGetAiKeys, async (): Promise<GetAiKeysResponse> => {
+    const [openai, anthropic] = await Promise.all([getAiKey('openai'), getAiKey('anthropic')]);
+    return {
+      keys: [
+        { provider: 'openai', configured: Boolean(openai) },
+        { provider: 'anthropic', configured: Boolean(anthropic) }
+      ]
+    };
+  });
+  ipcMain.handle(
+    IpcChannels.settingsSetAiKey,
+    async (_event, request: SetAiKeyRequest): Promise<SetAiKeyResponse> => {
+      const apiKey = request.apiKey.trim();
+      if (!apiKey) {
+        throw new Error('API key is required.');
+      }
+      await setAiKey(request.provider, apiKey);
+      return { provider: request.provider, configured: true };
+    }
+  );
+  ipcMain.handle(
+    IpcChannels.settingsClearAiKey,
+    async (_event, request: ClearAiKeyRequest): Promise<ClearAiKeyResponse> => {
+      await clearAiKey(request.provider);
+      return { provider: request.provider, configured: false };
+    }
+  );
   ipcMain.handle(IpcChannels.sshSessionStart, (event, request) =>
     sshPtyService.startSession(request, event.sender)
   );

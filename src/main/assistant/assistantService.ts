@@ -15,6 +15,7 @@ import type { SshPtyService } from '../ssh/sshPtyService';
 import type { WebContents } from 'electron';
 import { IpcChannels } from '../../shared/ipc';
 import { randomUUID } from 'crypto';
+import { getAiKey } from '../security/credentials';
 
 type Provider = 'openai' | 'anthropic';
 type StreamFilterState = {
@@ -338,9 +339,9 @@ export class AssistantService {
   }
 
   private async requestOpenAi(model: AiModel, system: string, user: string): Promise<string> {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY || (await getAiKey('openai'));
     if (!apiKey) {
-      throw new Error('Missing OPENAI_API_KEY for AI requests.');
+      throw new Error('Missing OpenAI API key. Set it in Settings.');
     }
 
     const response = await fetch(OPENAI_URL, {
@@ -382,9 +383,9 @@ export class AssistantService {
   }
 
   private async requestAnthropic(model: AiModel, system: string, user: string): Promise<string> {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.ANTHROPIC_API_KEY || (await getAiKey('anthropic'));
     if (!apiKey) {
-      throw new Error('Missing ANTHROPIC_API_KEY for AI requests.');
+      throw new Error('Missing Anthropic API key. Set it in Settings.');
     }
 
     const response = await fetch(ANTHROPIC_URL, {
@@ -423,9 +424,9 @@ export class AssistantService {
     sender?: WebContents,
     onChunk?: StreamChunkHandler
   ): Promise<string> {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY || (await getAiKey('openai'));
     if (!apiKey) {
-      throw new Error('Missing OPENAI_API_KEY for AI requests.');
+      throw new Error('Missing OpenAI API key. Set it in Settings.');
     }
 
     const response = await fetch(OPENAI_URL, {
@@ -527,9 +528,9 @@ export class AssistantService {
     sender?: WebContents,
     onChunk?: StreamChunkHandler
   ): Promise<string> {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.ANTHROPIC_API_KEY || (await getAiKey('anthropic'));
     if (!apiKey) {
-      throw new Error('Missing ANTHROPIC_API_KEY for AI requests.');
+      throw new Error('Missing Anthropic API key. Set it in Settings.');
     }
 
     const response = await fetch(ANTHROPIC_URL, {

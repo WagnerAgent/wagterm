@@ -47,11 +47,11 @@ const KeysPane = ({
   detectedKeyType
 }: KeysPaneProps) => {
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
+    <div className="h-full flex flex-col">
+      <div className="px-6 pt-6 pb-4 flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">SSH Keys</h3>
-          <p className="text-sm text-muted-foreground">Generate or import keys (ED25519, RSA, PEM)</p>
+          <p className="text-sm text-muted-foreground mt-1">Generate or import keys (ED25519, RSA, PEM)</p>
         </div>
 
         <Sheet open={keySheetOpen} onOpenChange={setKeySheetOpen}>
@@ -188,7 +188,8 @@ const KeysPane = ({
         </Sheet>
       </div>
 
-      {keys.length === 0 ? (
+      <div className="flex-1 overflow-y-auto px-6 pb-6">
+        {keys.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Key className="h-12 w-12 text-muted-foreground mb-4" />
@@ -247,6 +248,7 @@ const KeysPane = ({
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 };

@@ -33,6 +33,13 @@ import type {
   UpdateConnectionResponse
 } from '../shared/ssh';
 import type {
+  ClearAiKeyRequest,
+  ClearAiKeyResponse,
+  GetAiKeysResponse,
+  SetAiKeyRequest,
+  SetAiKeyResponse
+} from '../shared/settings';
+import type {
   AiGenerateRequest,
   AiGenerateResponse,
   AiStreamChunkEvent,
@@ -130,5 +137,13 @@ contextBridge.exposeInMainWorld('wagterm', {
         return () => ipcRenderer.removeAllListeners(IpcChannels.assistantAgentEvent);
       }
     }
+  },
+  settings: {
+    getAiKeys: (): Promise<GetAiKeysResponse> =>
+      ipcRenderer.invoke(IpcChannels.settingsGetAiKeys),
+    setAiKey: (request: SetAiKeyRequest): Promise<SetAiKeyResponse> =>
+      ipcRenderer.invoke(IpcChannels.settingsSetAiKey, request),
+    clearAiKey: (request: ClearAiKeyRequest): Promise<ClearAiKeyResponse> =>
+      ipcRenderer.invoke(IpcChannels.settingsClearAiKey, request)
   }
 });

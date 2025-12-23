@@ -231,6 +231,19 @@ declare global {
           }) => void) => () => void;
         };
       };
+      settings: {
+        getAiKeys: () => Promise<{
+          keys: Array<{ provider: 'openai' | 'anthropic'; configured: boolean }>;
+        }>;
+        setAiKey: (request: { provider: 'openai' | 'anthropic'; apiKey: string }) => Promise<{
+          provider: 'openai' | 'anthropic';
+          configured: boolean;
+        }>;
+        clearAiKey: (request: { provider: 'openai' | 'anthropic' }) => Promise<{
+          provider: 'openai' | 'anthropic';
+          configured: boolean;
+        }>;
+      };
     };
   }
 }

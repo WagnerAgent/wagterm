@@ -136,10 +136,7 @@ const App = () => {
           <div className="flex-1 flex overflow-hidden">
             {activeTab === 'connections' && (
               <main className="flex-1 flex flex-col overflow-hidden">
-                <header className="border-b border-border px-8 py-6">
-                  <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Workspace</p>
-                  <h2 className="text-2xl font-semibold mt-1">{sectionTitle}</h2>
-                </header>
+
 
                 <div className="flex-1 overflow-auto p-8">
                   {section === 'connections' && (
