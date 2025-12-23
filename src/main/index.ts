@@ -82,6 +82,9 @@ app.whenReady().then(() => {
   ipcMain.handle(IpcChannels.assistantStreamStart, (event, request) =>
     assistantService.stream(request, event.sender)
   );
+  ipcMain.on(IpcChannels.assistantAgentAction, (event, action) =>
+    assistantService.handleAgentAction(action, event.sender)
+  );
 
   createWindow();
 

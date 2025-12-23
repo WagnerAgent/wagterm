@@ -14,14 +14,6 @@ type UseAiChatOptions = {
   getActiveTab: () => string;
 };
 
-type AiStreamEntry = {
-  sessionId: string;
-  messageId: string;
-  buffer: string;
-  tick: number;
-  lastVisibleText: string;
-};
-
 export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOptions) => {
   const [conversationMessages, setConversationMessages] = useState<Map<string, Message[]>>(new Map());
   const [conversationInput, setConversationInput] = useState('');
@@ -29,11 +21,7 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOpti
     'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5'
   >('gpt-5.2');
 
-  const assistantStreamRequests = useRef<Map<string, AiStreamEntry>>(new Map());
-  const activeStreamBySession = useRef<Map<string, string>>(new Map());
   const conversationMessagesRef = useRef<Map<string, Message[]>>(new Map());
-  const agentGoalBySession = useRef<Map<string, string>>(new Map());
-  const agentStepBySession = useRef<Map<string, number>>(new Map());
 
   const registerSession = (sessionId: string) => {
     setConversationMessages((prev) => {
@@ -78,72 +66,14 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOpti
     });
   };
 
-  const startAssistantStream = async (
-    sessionId: string,
-    session: TerminalSession,
-    prompt: string
-  ) => {
-    const assistantMessageId = crypto.randomUUID();
-    setConversationMessages((prev) => {
-      const newMap = new Map(prev);
-      const messages = newMap.get(sessionId) || [];
-      newMap.set(sessionId, [
-        ...messages,
-        { id: assistantMessageId, role: 'assistant', kind: 'text', content: '...' }
-      ]);
-      return newMap;
-    });
-
-    const requestId = crypto.randomUUID();
-    assistantStreamRequests.current.set(requestId, {
-      sessionId,
-      messageId: assistantMessageId,
-      buffer: '',
-      tick: 0,
-      lastVisibleText: ''
-    });
-    activeStreamBySession.current.set(sessionId, requestId);
-
-    try {
-      await window.wagterm.assistant.stream({
-        requestId,
-        sessionId,
-        prompt,
-        model: selectedModel,
-        session: {
-          id: session.id,
-          name: session.profile.name,
-          host: session.profile.host,
-          username: session.profile.username,
-          port: session.profile.port
-        },
-        outputLimit: 4000
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'AI request failed.';
-      assistantStreamRequests.current.delete(requestId);
-      activeStreamBySession.current.delete(sessionId);
+  const ensureConversation = (sessionId: string) => {
+    if (!conversationMessagesRef.current.has(sessionId)) {
       setConversationMessages((prev) => {
         const newMap = new Map(prev);
-        const messages = newMap.get(sessionId) || [];
-        newMap.set(
-          sessionId,
-          messages.map((msg) => (msg.id === assistantMessageId ? { ...msg, content: message } : msg))
-        );
+        newMap.set(sessionId, []);
         return newMap;
       });
     }
-  };
-
-  const buildAgentPrompt = (goal: string, step: number, note?: string) => {
-    const lines = [
-      `Goal: ${goal}`,
-      `Step: ${step}`,
-      'You are in agent mode. If the goal is not complete, propose the next single command.',
-      'If the goal is complete, set done=true and return no commands.',
-      note ? `Context: ${note}` : null
-    ].filter((line): line is string => Boolean(line));
-    return lines.join('\n');
   };
 
   const handleApproveCommand = (sessionId: string, proposalId: string) => {
@@ -155,53 +85,22 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOpti
     }
 
     updateProposalStatus(sessionId, proposalId, 'approved');
-    void window.wagterm.sshSession.sendInput({
+    window.wagterm.assistant.agent.sendAction({
+      version: 1,
       sessionId,
-      data: `${proposal.command}\n`
+      kind: 'approve_tool',
+      toolCallId: proposalId
     });
-
-    setConversationMessages((prev) => {
-      const newMap = new Map(prev);
-      const messages = newMap.get(sessionId) || [];
-      newMap.set(sessionId, [
-        ...messages,
-        { id: crypto.randomUUID(), role: 'assistant', kind: 'text', content: `Executed: ${proposal.command}` }
-      ]);
-      return newMap;
-    });
-
-    const session = getSessionById(sessionId);
-    if (!session) {
-      return;
-    }
-
-    const goal = agentGoalBySession.current.get(sessionId);
-    const currentStep = agentStepBySession.current.get(sessionId) ?? 0;
-    agentStepBySession.current.set(sessionId, currentStep + 1);
-    const followupPrompt = goal
-      ? buildAgentPrompt(goal, currentStep + 1, `Command executed: ${proposal.command}`)
-      : [
-          `Command executed: ${proposal.command}`,
-          'Review the latest output and suggest the next step if needed.',
-          'If no further action is required, respond with intent chat and no commands.'
-        ].join('\n');
-
-    window.setTimeout(() => {
-      const hasPending = (conversationMessagesRef.current.get(sessionId) ?? []).some(
-        (message) => message.kind === 'proposal' && message.proposal?.status === 'pending'
-      );
-      if (hasPending) {
-        return;
-      }
-      if (activeStreamBySession.current.get(sessionId)) {
-        return;
-      }
-      void startAssistantStream(sessionId, session, followupPrompt);
-    }, 800);
   };
 
   const handleRejectCommand = (sessionId: string, proposalId: string) => {
     updateProposalStatus(sessionId, proposalId, 'rejected');
+    window.wagterm.assistant.agent.sendAction({
+      version: 1,
+      sessionId,
+      kind: 'reject_tool',
+      toolCallId: proposalId
+    });
   };
 
   const handleSendConversation = async () => {
@@ -209,15 +108,12 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOpti
     if (!conversationInput.trim() || !activeTab || activeTab === 'connections') return;
 
     const sessionId = activeTab;
-    const session = getSessionById(sessionId);
-    if (!session) {
+    if (!getSessionById(sessionId)) {
       return;
     }
 
     const userMessage = conversationInput.trim();
     const userMessageId = crypto.randomUUID();
-    agentGoalBySession.current.set(sessionId, userMessage);
-    agentStepBySession.current.set(sessionId, 0);
 
     setConversationMessages((prev) => {
       const newMap = new Map(prev);
@@ -251,128 +147,104 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOpti
       return;
     }
 
-    if (activeStreamBySession.current.get(sessionId)) {
-      return;
-    }
-
-    await startAssistantStream(sessionId, session, buildAgentPrompt(userMessage, 0, 'Initial user request.'));
+    window.wagterm.assistant.agent.sendAction({
+      version: 1,
+      sessionId,
+      kind: 'user_message',
+      messageId: userMessageId,
+      content: userMessage,
+      model: selectedModel
+    });
   };
 
   useEffect(() => {
-    const removeChunkListener = window.wagterm.assistant.onChunk((payload) => {
-      const entry = assistantStreamRequests.current.get(payload.requestId);
-      if (!entry) {
-        return;
-      }
-      entry.buffer += payload.text;
-      entry.tick += 1;
-      const markerIndex = entry.buffer.indexOf('JSON:');
-      let visibleText = (markerIndex === -1 ? entry.buffer : entry.buffer.slice(0, markerIndex)).trim();
-      if (markerIndex === -1) {
-        visibleText = visibleText.replace(/\bJSON$/i, '').trim();
-      }
-      const trimmed = visibleText.trimStart();
-
-      if (trimmed.startsWith('{')) {
-        const match = /\"message\"\\s*:\\s*\"((?:\\\\.|[^\"])*)/m.exec(entry.buffer);
-        if (match && match[1]) {
-          visibleText = match[1]
-            .replace(/\\n/g, '\n')
-            .replace(/\\\"/g, '\"')
-            .replace(/\\\\/g, '\\');
-        } else {
-          visibleText = '';
+    const removeAgentEventListener = window.wagterm.assistant.agent.onEvent((event) => {
+      if (event.kind === 'message') {
+        if (event.role !== 'assistant') {
+          return;
         }
-      }
-      const dots = '.'.repeat((entry.tick % 3) + 1);
-      const typingMessage = visibleText.length > 0 ? visibleText : `Thinking${dots}`;
-      entry.lastVisibleText = visibleText;
-
-      setConversationMessages((prev) => {
-        const newMap = new Map(prev);
-        const messages = newMap.get(entry.sessionId) ?? [];
-        newMap.set(
-          entry.sessionId,
-          messages.map((message) =>
-            message.id === entry.messageId ? { ...message, content: typingMessage } : message
-          )
-        );
-        return newMap;
-      });
-    });
-
-    const removeCompleteListener = window.wagterm.assistant.onComplete((payload) => {
-      const entry = assistantStreamRequests.current.get(payload.requestId);
-      if (!entry) {
+        ensureConversation(event.sessionId);
+        setConversationMessages((prev) => {
+          const newMap = new Map(prev);
+          const messages = newMap.get(event.sessionId) ?? [];
+          const messageIndex = messages.findIndex((message) => message.id === event.messageId);
+          const content = event.content ?? '';
+          if (messageIndex >= 0) {
+            const updated = [...messages];
+            updated[messageIndex] = { ...updated[messageIndex], content };
+            newMap.set(event.sessionId, updated);
+          } else {
+            newMap.set(event.sessionId, [
+              ...messages,
+              { id: event.messageId ?? crypto.randomUUID(), role: 'assistant', kind: 'text', content }
+            ]);
+          }
+          return newMap;
+        });
         return;
       }
-      assistantStreamRequests.current.delete(payload.requestId);
-      activeStreamBySession.current.delete(payload.sessionId);
 
-      const commands = payload.response.commands ?? [];
-      const assistantMessage =
-        entry.lastVisibleText.trim() ||
-        payload.response.message ||
-        (commands.length > 0 ? 'AI proposed a command.' : 'AI response received.');
-      const nextProposal = commands[0];
-      if (payload.response.done) {
-        agentGoalBySession.current.delete(payload.sessionId);
-        agentStepBySession.current.delete(payload.sessionId);
-      }
-
-      setConversationMessages((prev) => {
-        const newMap = new Map(prev);
-        const messages = newMap.get(payload.sessionId) ?? [];
-        const updatedMessages = messages.map((message) =>
-          message.id === entry.messageId ? { ...message, content: assistantMessage } : message
-        );
-
-        if (nextProposal) {
-          updatedMessages.push({
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            kind: 'proposal',
-            proposal: {
-              id: nextProposal.id ?? crypto.randomUUID(),
-              command: nextProposal.command,
-              rationale: nextProposal.rationale,
-              risk: nextProposal.risk,
-              requiresApproval: nextProposal.requiresApproval,
-              status: 'pending'
+      if (event.kind === 'tool_requested') {
+        ensureConversation(event.sessionId);
+        const proposal = event.toolCall;
+        if (!proposal) {
+          return;
+        }
+        setConversationMessages((prev) => {
+          const newMap = new Map(prev);
+          const messages = newMap.get(event.sessionId) ?? [];
+          newMap.set(event.sessionId, [
+            ...messages,
+            {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              kind: 'proposal',
+              proposal: {
+                id: proposal.id,
+                command: String(proposal.input.command ?? ''),
+                rationale: undefined,
+                risk: proposal.risk,
+                requiresApproval: proposal.requiresApproval,
+                status: 'pending'
+              }
             }
-          });
-        }
-
-        newMap.set(payload.sessionId, updatedMessages);
-        return newMap;
-      });
-    });
-
-    const removeErrorListener = window.wagterm.assistant.onError((payload) => {
-      const entry = assistantStreamRequests.current.get(payload.requestId);
-      if (!entry) {
+          ]);
+          return newMap;
+        });
         return;
       }
-      assistantStreamRequests.current.delete(payload.requestId);
-      activeStreamBySession.current.delete(payload.sessionId);
+
+      if (event.kind !== 'tool_result') {
+        return;
+      }
+
+      const toolCallId = event.result.toolCallId;
+      if (!toolCallId) {
+        return;
+      }
+
+      if (event.result.status === 'cancelled' || event.result.status === 'error') {
+        updateProposalStatus(event.sessionId, toolCallId, 'rejected');
+      }
+
+      const messageText =
+        event.result.output ||
+        event.result.error ||
+        (event.result.status === 'cancelled' ? 'Command was rejected.' : 'Command completed.');
 
       setConversationMessages((prev) => {
         const newMap = new Map(prev);
-        const messages = newMap.get(payload.sessionId) ?? [];
-        newMap.set(
-          payload.sessionId,
-          messages.map((message) =>
-            message.id === entry.messageId ? { ...message, content: payload.error } : message
-          )
-        );
+        const messages = newMap.get(event.sessionId) ?? [];
+        newMap.set(event.sessionId, [
+          ...messages,
+          { id: crypto.randomUUID(), role: 'assistant', kind: 'text', content: messageText }
+        ]);
         return newMap;
       });
     });
 
     return () => {
-      removeChunkListener();
-      removeCompleteListener();
-      removeErrorListener();
+      removeAgentEventListener();
     };
   }, []);
 

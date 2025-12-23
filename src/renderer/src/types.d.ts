@@ -126,7 +126,7 @@ declare global {
           sessionId: string;
           prompt: string;
           model: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
-          session: {
+          session?: {
             id: string;
             name?: string;
             host: string;
@@ -153,7 +153,7 @@ declare global {
           sessionId: string;
           prompt: string;
           model: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
-          session: {
+          session?: {
             id: string;
             name?: string;
             host: string;
@@ -179,6 +179,57 @@ declare global {
           rawText?: string;
         }) => void) => () => void;
         onError: (listener: (event: { requestId: string; sessionId: string; error: string }) => void) => () => void;
+        agent: {
+          sendAction: (action: {
+            version: 1;
+            sessionId: string;
+            kind: 'user_message' | 'approve_tool' | 'reject_tool' | 'cancel' | 'provide_context';
+            messageId?: string;
+            content?: string;
+            model?: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
+            toolCallId?: string;
+            reason?: string;
+            context?: Record<string, unknown>;
+          }) => void;
+          onEvent: (listener: (event: {
+            version: 1;
+            sessionId: string;
+            timestamp: number;
+            kind:
+              | 'message'
+              | 'plan_updated'
+              | 'tool_requested'
+              | 'tool_result'
+              | 'waiting_for_approval'
+              | 'state_changed';
+            messageId?: string;
+            role?: 'user' | 'assistant' | 'tool' | 'system';
+            content?: string;
+            partial?: boolean;
+            planId?: string;
+            steps?: Array<{
+              id: string;
+              description: string;
+              status: 'pending' | 'in_progress' | 'done' | 'blocked';
+            }>;
+            toolCall?: {
+              id: string;
+              name: string;
+              input: Record<string, unknown>;
+              requiresApproval: boolean;
+              risk?: 'low' | 'medium' | 'high';
+            };
+            result?: {
+              toolCallId: string;
+              status: 'success' | 'error' | 'cancelled';
+              output?: string;
+              error?: string;
+            };
+            toolCallId?: string;
+            state?: 'idle' | 'intent' | 'plan' | 'act' | 'observe' | 'reflect' | 'finish' | 'error';
+            detail?: string;
+          }) => void) => () => void;
+        };
       };
     };
   }

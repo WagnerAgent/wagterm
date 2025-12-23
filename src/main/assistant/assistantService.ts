@@ -1,21 +1,35 @@
 import type {
   AiCommandResponse,
+  AiCommandProposal,
   AiGenerateRequest,
   AiGenerateResponse,
   AiModel,
+  AiSessionContext,
   AiStreamCompleteEvent,
   AiStreamErrorEvent,
   AiStreamStartRequest
 } from '../../shared/assistant';
 import { AI_COMMAND_RESPONSE_EXAMPLE, AI_COMMAND_RESPONSE_SCHEMA, parseAiCommandResponse } from '../../shared/assistant';
+import type { AgentAction, AgentEvent } from '../../shared/agent-ipc';
 import type { SshPtyService } from '../ssh/sshPtyService';
 import type { WebContents } from 'electron';
 import { IpcChannels } from '../../shared/ipc';
+import { randomUUID } from 'crypto';
 
 type Provider = 'openai' | 'anthropic';
 type StreamFilterState = {
   pending: string;
   jsonStarted: boolean;
+};
+type StreamChunkHandler = (text: string) => void;
+
+type AgentSessionState = {
+  sessionId: string;
+  state: AgentEvent['state'];
+  goal?: string;
+  step: number;
+  model: AiModel;
+  maxSteps: number;
 };
 
 const JSON_MARKER = 'JSON:';
@@ -27,7 +41,7 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const resolveProvider = (model: AiModel): Provider =>
   model.startsWith('gpt-') ? 'openai' : 'anthropic';
 
-const buildSystemPrompt = (output: string, truncated: boolean, session: AiGenerateRequest['session']) => {
+const buildSystemPrompt = (output: string, truncated: boolean, session: AiSessionContext) => {
   const outputNote = truncated ? ' (truncated)' : '';
   return [
     'You are Wagterm AI, an SSH assistant.',
@@ -51,7 +65,7 @@ const buildSystemPrompt = (output: string, truncated: boolean, session: AiGenera
 const buildStreamingSystemPrompt = (
   output: string,
   truncated: boolean,
-  session: AiGenerateRequest['session']
+  session: AiSessionContext
 ) => {
   const outputNote = truncated ? ' (truncated)' : '';
   return [
@@ -80,6 +94,17 @@ const buildStreamingSystemPrompt = (
 
 const buildUserPrompt = (prompt: string) => {
   return `User request:\n${prompt}`;
+};
+
+const buildAgentPrompt = (goal: string, step: number, note?: string) => {
+  const lines = [
+    `Goal: ${goal}`,
+    `Step: ${step}`,
+    'You are in agent mode. If the goal is not complete, propose the next single command.',
+    'If the goal is complete, set done=true and return no commands.',
+    note ? `Context: ${note}` : null
+  ].filter((line): line is string => Boolean(line));
+  return lines.join('\n');
 };
 
 const parseJsonFromText = (text: string): AiCommandResponse => {
@@ -231,7 +256,40 @@ const filterStreamingText = (delta: string, state: StreamFilterState): string | 
 };
 
 export class AssistantService {
+  private lastAgentSender?: WebContents;
+  private readonly proposalsBySession = new Map<string, Map<string, AiCommandProposal>>();
+  private readonly agentSessions = new Map<string, AgentSessionState>();
+
   constructor(private readonly sshPtyService: SshPtyService) {}
+
+  handleAgentAction(action: AgentAction, sender: WebContents): void {
+    this.lastAgentSender = sender;
+    console.info('[AgentAction]', action.kind, action.sessionId);
+
+    if (action.kind === 'user_message') {
+      void this.handleUserMessage(action);
+      return;
+    }
+    if (action.kind === 'approve_tool') {
+      this.handleApproveTool(action);
+      return;
+    }
+    if (action.kind === 'reject_tool') {
+      this.handleRejectTool(action);
+      return;
+    }
+    if (action.kind === 'cancel') {
+      this.updateAgentState(action.sessionId, 'finish', 'Cancelled by user.');
+    }
+  }
+
+  sendAgentEvent(event: AgentEvent, sender?: WebContents): void {
+    const target = sender ?? this.lastAgentSender;
+    if (!target) {
+      return;
+    }
+    target.send(IpcChannels.assistantAgentEvent, event);
+  }
 
   async generate(request: AiGenerateRequest): Promise<AiGenerateResponse> {
     const outputResponse = this.sshPtyService.getRecentOutput({
@@ -239,7 +297,8 @@ export class AssistantService {
       limit: request.outputLimit
     });
 
-    const system = buildSystemPrompt(outputResponse.output, outputResponse.truncated, request.session);
+    const sessionContext = this.resolveSessionContext(request);
+    const system = buildSystemPrompt(outputResponse.output, outputResponse.truncated, sessionContext);
     const user = buildUserPrompt(request.prompt);
     const provider = resolveProvider(request.model);
 
@@ -249,7 +308,8 @@ export class AssistantService {
         : await this.requestAnthropic(request.model, system, user);
 
     const response = parseJsonFromText(rawText);
-    return { response: enforceIntentPolicy(response), rawText };
+    const normalizedResponse = this.trackProposals(request.sessionId, enforceIntentPolicy(response));
+    return { response: normalizedResponse, rawText };
   }
 
   async stream(request: AiStreamStartRequest, sender: WebContents): Promise<void> {
@@ -258,7 +318,8 @@ export class AssistantService {
       limit: request.outputLimit
     });
 
-    const system = buildStreamingSystemPrompt(outputResponse.output, outputResponse.truncated, request.session);
+    const sessionContext = this.resolveSessionContext(request);
+    const system = buildStreamingSystemPrompt(outputResponse.output, outputResponse.truncated, sessionContext);
     const user = buildUserPrompt(request.prompt);
     const provider = resolveProvider(request.model);
 
@@ -273,7 +334,7 @@ export class AssistantService {
       if (messageText && !response.message) {
         response.message = messageText;
       }
-      const normalizedResponse = enforceIntentPolicy(response);
+      const normalizedResponse = this.trackProposals(request.sessionId, enforceIntentPolicy(response));
       const payload: AiStreamCompleteEvent = {
         requestId: request.requestId,
         sessionId: request.sessionId,
@@ -374,7 +435,8 @@ export class AssistantService {
     request: AiStreamStartRequest,
     system: string,
     user: string,
-    sender: WebContents
+    sender?: WebContents,
+    onChunk?: StreamChunkHandler
   ): Promise<string> {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -432,11 +494,14 @@ export class AssistantService {
         const payload = trimmed.replace(/^data:\s*/, '');
         if (payload === '[DONE]') {
           if (!streamState.jsonStarted && streamState.pending) {
-            sender.send(IpcChannels.assistantStreamChunk, {
-              requestId: request.requestId,
-              sessionId: request.sessionId,
-              text: streamState.pending
-            });
+            onChunk?.(streamState.pending);
+            if (!onChunk && sender) {
+              sender.send(IpcChannels.assistantStreamChunk, {
+                requestId: request.requestId,
+                sessionId: request.sessionId,
+                text: streamState.pending
+              });
+            }
             streamState.pending = '';
           }
           return rawText;
@@ -451,11 +516,14 @@ export class AssistantService {
             rawText += delta;
             const filtered = filterStreamingText(delta, streamState);
             if (filtered) {
-              sender.send(IpcChannels.assistantStreamChunk, {
-                requestId: request.requestId,
-                sessionId: request.sessionId,
-                text: filtered
-              });
+              onChunk?.(filtered);
+              if (!onChunk && sender) {
+                sender.send(IpcChannels.assistantStreamChunk, {
+                  requestId: request.requestId,
+                  sessionId: request.sessionId,
+                  text: filtered
+                });
+              }
             }
           }
         } catch {
@@ -471,7 +539,8 @@ export class AssistantService {
     request: AiStreamStartRequest,
     system: string,
     user: string,
-    sender: WebContents
+    sender?: WebContents,
+    onChunk?: StreamChunkHandler
   ): Promise<string> {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -523,11 +592,14 @@ export class AssistantService {
         const payload = trimmed.replace(/^data:\s*/, '');
         if (payload === '[DONE]') {
           if (!streamState.jsonStarted && streamState.pending) {
-            sender.send(IpcChannels.assistantStreamChunk, {
-              requestId: request.requestId,
-              sessionId: request.sessionId,
-              text: streamState.pending
-            });
+            onChunk?.(streamState.pending);
+            if (!onChunk && sender) {
+              sender.send(IpcChannels.assistantStreamChunk, {
+                requestId: request.requestId,
+                sessionId: request.sessionId,
+                text: streamState.pending
+              });
+            }
             streamState.pending = '';
           }
           return rawText;
@@ -538,11 +610,14 @@ export class AssistantService {
             rawText += parsed.delta.text;
             const filtered = filterStreamingText(parsed.delta.text, streamState);
             if (filtered) {
-              sender.send(IpcChannels.assistantStreamChunk, {
-                requestId: request.requestId,
-                sessionId: request.sessionId,
-                text: filtered
-              });
+              onChunk?.(filtered);
+              if (!onChunk && sender) {
+                sender.send(IpcChannels.assistantStreamChunk, {
+                  requestId: request.requestId,
+                  sessionId: request.sessionId,
+                  text: filtered
+                });
+              }
             }
           }
         } catch {
@@ -552,5 +627,250 @@ export class AssistantService {
     }
 
     return rawText;
+  }
+
+  private resolveSessionContext(request: AiGenerateRequest) {
+    if (request.session) {
+      return request.session;
+    }
+    const session = this.sshPtyService.getSessionContext(request.sessionId);
+    if (!session) {
+      throw new Error('SSH session context not found.');
+    }
+    return session;
+  }
+
+  private updateAgentState(sessionId: string, state: AgentSessionState['state'], detail?: string) {
+    const session = this.agentSessions.get(sessionId);
+    if (session) {
+      session.state = state;
+    }
+    this.sendAgentEvent({
+      version: 1,
+      kind: 'state_changed',
+      sessionId,
+      timestamp: Date.now(),
+      state,
+      detail
+    });
+  }
+
+  private async handleUserMessage(action: Extract<AgentAction, { kind: 'user_message' }>) {
+    const model = action.model ?? 'gpt-5.2';
+    const session: AgentSessionState = {
+      sessionId: action.sessionId,
+      state: 'intent',
+      goal: action.content,
+      step: 0,
+      model,
+      maxSteps: 8
+    };
+
+    this.agentSessions.set(action.sessionId, session);
+    this.updateAgentState(action.sessionId, 'intent', 'User intent received.');
+
+    await this.runAgentStep(session, 'Initial user request.');
+  }
+
+  private async runAgentStep(session: AgentSessionState, note?: string) {
+    if (session.step >= session.maxSteps) {
+      this.updateAgentState(session.sessionId, 'finish', 'Max step limit reached.');
+      return;
+    }
+
+    this.updateAgentState(session.sessionId, 'plan', `Planning step ${session.step + 1}.`);
+
+    const messageId = randomUUID();
+    let streamedText = '';
+    const onChunk: StreamChunkHandler = (text) => {
+      streamedText += text;
+      this.sendAgentEvent({
+        version: 1,
+        kind: 'message',
+        sessionId: session.sessionId,
+        timestamp: Date.now(),
+        messageId,
+        role: 'assistant',
+        content: streamedText,
+        partial: true
+      });
+    };
+
+    const request: AiStreamStartRequest = {
+      requestId: randomUUID(),
+      sessionId: session.sessionId,
+      prompt: buildAgentPrompt(session.goal ?? '', session.step, note),
+      model: session.model,
+      outputLimit: 4000
+    };
+
+    const outputResponse = this.sshPtyService.getRecentOutput({
+      sessionId: request.sessionId,
+      limit: request.outputLimit
+    });
+    const sessionContext = this.resolveSessionContext(request);
+    const system = buildStreamingSystemPrompt(outputResponse.output, outputResponse.truncated, sessionContext);
+    const user = buildUserPrompt(request.prompt);
+    const provider = resolveProvider(request.model);
+
+    let rawText = '';
+    try {
+      rawText =
+        provider === 'openai'
+          ? await this.streamOpenAi(request, system, user, undefined, onChunk)
+          : await this.streamAnthropic(request, system, user, undefined, onChunk);
+    } catch (error) {
+      this.updateAgentState(session.sessionId, 'error', 'Assistant stream failed.');
+      this.sendAgentEvent({
+        version: 1,
+        kind: 'message',
+        sessionId: session.sessionId,
+        timestamp: Date.now(),
+        messageId,
+        role: 'assistant',
+        content: error instanceof Error ? error.message : 'AI request failed.'
+      });
+      return;
+    }
+
+    const { messageText, jsonText } = extractStreamingPayload(rawText);
+    const parsedResponse = jsonText ? parseJsonFromText(jsonText) : parseJsonFromText(rawText);
+    if (messageText && !parsedResponse.message) {
+      parsedResponse.message = messageText;
+    }
+    const normalizedResponse = this.trackProposals(
+      session.sessionId,
+      enforceIntentPolicy(parsedResponse)
+    );
+
+    const finalMessage = normalizedResponse.message || streamedText || 'AI response received.';
+    this.sendAgentEvent({
+      version: 1,
+      kind: 'message',
+      sessionId: session.sessionId,
+      timestamp: Date.now(),
+      messageId,
+      role: 'assistant',
+      content: finalMessage,
+      partial: false
+    });
+
+    if (normalizedResponse.done || normalizedResponse.commands.length === 0) {
+      this.updateAgentState(session.sessionId, 'finish', 'Agent marked task complete.');
+      return;
+    }
+
+    const proposal = normalizedResponse.commands[0];
+    const toolCallId = proposal.id ?? randomUUID();
+    this.updateAgentState(session.sessionId, 'act', 'Awaiting command approval.');
+    this.sendAgentEvent({
+      version: 1,
+      kind: 'tool_requested',
+      sessionId: session.sessionId,
+      timestamp: Date.now(),
+      toolCall: {
+        id: toolCallId,
+        name: 'execute_command',
+        input: { command: proposal.command },
+        requiresApproval: proposal.requiresApproval,
+        risk: proposal.risk
+      }
+    });
+    this.sendAgentEvent({
+      version: 1,
+      kind: 'waiting_for_approval',
+      sessionId: session.sessionId,
+      timestamp: Date.now(),
+      toolCallId
+    });
+  }
+
+  private trackProposals(sessionId: string, response: AiCommandResponse): AiCommandResponse {
+    if (!response.commands.length) {
+      this.proposalsBySession.delete(sessionId);
+      return response;
+    }
+
+    const commands = response.commands.map((command) => ({
+      ...command,
+      id: command.id ?? randomUUID()
+    }));
+
+    this.proposalsBySession.set(sessionId, new Map(commands.map((command) => [command.id!, command])));
+
+    return { ...response, commands };
+  }
+
+  private handleApproveTool(action: Extract<AgentAction, { kind: 'approve_tool' }>) {
+    const proposals = this.proposalsBySession.get(action.sessionId);
+    const proposal = proposals?.get(action.toolCallId);
+
+    if (!proposal) {
+      this.sendAgentEvent({
+        version: 1,
+        kind: 'tool_result',
+        sessionId: action.sessionId,
+        timestamp: Date.now(),
+        result: {
+          toolCallId: action.toolCallId,
+          status: 'error',
+          error: 'Command proposal not found.'
+        }
+      });
+      return;
+    }
+
+    try {
+      this.sshPtyService.sendInput({
+        sessionId: action.sessionId,
+        data: `${proposal.command}\n`
+      });
+      this.updateAgentState(action.sessionId, 'observe', 'Command executed.');
+      this.sendAgentEvent({
+        version: 1,
+        kind: 'tool_result',
+        sessionId: action.sessionId,
+        timestamp: Date.now(),
+        result: {
+          toolCallId: action.toolCallId,
+          status: 'success',
+          output: `Executed: ${proposal.command}`
+        }
+      });
+      const session = this.agentSessions.get(action.sessionId);
+      if (session) {
+        session.step += 1;
+        this.updateAgentState(action.sessionId, 'reflect', 'Evaluating command output.');
+        void this.runAgentStep(session, `Command executed: ${proposal.command}`);
+      }
+    } catch (error) {
+      this.updateAgentState(action.sessionId, 'error', 'Command execution failed.');
+      this.sendAgentEvent({
+        version: 1,
+        kind: 'tool_result',
+        sessionId: action.sessionId,
+        timestamp: Date.now(),
+        result: {
+          toolCallId: action.toolCallId,
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Command execution failed.'
+        }
+      });
+    }
+  }
+
+  private handleRejectTool(action: Extract<AgentAction, { kind: 'reject_tool' }>) {
+    this.updateAgentState(action.sessionId, 'finish', 'Command rejected.');
+    this.sendAgentEvent({
+      version: 1,
+      kind: 'tool_result',
+      sessionId: action.sessionId,
+      timestamp: Date.now(),
+      result: {
+        toolCallId: action.toolCallId,
+        status: 'cancelled',
+        error: action.reason
+      }
+    });
   }
 }

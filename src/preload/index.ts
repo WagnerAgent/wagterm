@@ -40,6 +40,7 @@ import type {
   AiStreamErrorEvent,
   AiStreamStartRequest
 } from '../shared/assistant';
+import type { AgentAction, AgentEvent } from '../shared/agent-ipc';
 
 contextBridge.exposeInMainWorld('wagterm', {
   getAppInfo: () => ipcRenderer.invoke(IpcChannels.appInfo),
@@ -118,6 +119,16 @@ contextBridge.exposeInMainWorld('wagterm', {
         listener(payload)
       );
       return () => ipcRenderer.removeAllListeners(IpcChannels.assistantStreamError);
+    },
+    agent: {
+      sendAction: (action: AgentAction): void =>
+        ipcRenderer.send(IpcChannels.assistantAgentAction, action),
+      onEvent: (listener: (event: AgentEvent) => void) => {
+        ipcRenderer.on(IpcChannels.assistantAgentEvent, (_event, payload: AgentEvent) =>
+          listener(payload)
+        );
+        return () => ipcRenderer.removeAllListeners(IpcChannels.assistantAgentEvent);
+      }
     }
   }
 });

@@ -23,6 +23,8 @@ export const IpcChannels = {
   assistantStreamChunk: 'assistant:stream:chunk',
   assistantStreamComplete: 'assistant:stream:complete',
   assistantStreamError: 'assistant:stream:error',
+  assistantAgentEvent: 'assistant:agent:event',
+  assistantAgentAction: 'assistant:agent:action',
   sshSessionData: 'ssh:session:data',
   sshSessionExit: 'ssh:session:exit'
 } as const;

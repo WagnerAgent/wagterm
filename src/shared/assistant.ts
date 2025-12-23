@@ -49,7 +49,7 @@ export type AiGenerateRequest = {
   sessionId: string;
   prompt: string;
   model: AiModel;
-  session: AiSessionContext;
+  session?: AiSessionContext;
   outputLimit?: number;
 };
 
