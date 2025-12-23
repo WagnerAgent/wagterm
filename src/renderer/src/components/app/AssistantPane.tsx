@@ -4,6 +4,174 @@ import { Button } from '../ui/button';
 import type { CommandProposal, TerminalSession } from './types';
 import type { AgentPlanStep } from '../../../shared/agent-ipc';
 
+type MarkdownBlock =
+  | { type: 'paragraph'; content: string }
+  | { type: 'heading'; level: number; content: string }
+  | { type: 'list'; ordered: boolean; items: string[] }
+  | { type: 'code'; language: string; content: string }
+  | { type: 'quote'; content: string };
+
+const parseMarkdownBlocks = (source: string): MarkdownBlock[] => {
+  const lines = source.split('\n');
+  const blocks: MarkdownBlock[] = [];
+  let index = 0;
+
+  const isBlockStart = (line: string) => {
+    const trimmed = line.trim();
+    return (
+      trimmed.startsWith('```') ||
+      /^#{1,6}\s+/.test(line) ||
+      /^>\s?/.test(line) ||
+      /^[-*]\s+/.test(line) ||
+      /^\d+\.\s+/.test(line)
+    );
+  };
+
+  while (index < lines.length) {
+    const line = lines[index];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith('```')) {
+      const language = trimmed.slice(3).trim();
+      index += 1;
+      const codeLines: string[] = [];
+      while (index < lines.length && !lines[index].trim().startsWith('```')) {
+        codeLines.push(lines[index]);
+        index += 1;
+      }
+      if (index < lines.length) {
+        index += 1;
+      }
+      blocks.push({ type: 'code', language, content: codeLines.join('\n') });
+      continue;
+    }
+
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    if (headingMatch) {
+      blocks.push({ type: 'heading', level: headingMatch[1].length, content: headingMatch[2] });
+      index += 1;
+      continue;
+    }
+
+    if (/^>\s?/.test(line)) {
+      const quoteLines: string[] = [];
+      while (index < lines.length && /^>\s?/.test(lines[index])) {
+        quoteLines.push(lines[index].replace(/^>\s?/, ''));
+        index += 1;
+      }
+      blocks.push({ type: 'quote', content: quoteLines.join('\n') });
+      continue;
+    }
+
+    const orderedMatch = line.match(/^\d+\.\s+(.*)$/);
+    const unorderedMatch = line.match(/^[-*]\s+(.*)$/);
+    if (orderedMatch || unorderedMatch) {
+      const ordered = Boolean(orderedMatch);
+      const items: string[] = [];
+      while (index < lines.length) {
+        const currentLine = lines[index];
+        const currentOrdered = currentLine.match(/^\d+\.\s+(.*)$/);
+        const currentUnordered = currentLine.match(/^[-*]\s+(.*)$/);
+        const match = ordered ? currentOrdered : currentUnordered;
+        if (!match) {
+          break;
+        }
+        items.push(match[1]);
+        index += 1;
+      }
+      blocks.push({ type: 'list', ordered, items });
+      continue;
+    }
+
+    const paragraphLines: string[] = [];
+    while (index < lines.length) {
+      const nextLine = lines[index];
+      if (!nextLine.trim()) {
+        break;
+      }
+      if (isBlockStart(nextLine)) {
+        break;
+      }
+      paragraphLines.push(nextLine);
+      index += 1;
+    }
+    blocks.push({ type: 'paragraph', content: paragraphLines.join('\n') });
+  }
+
+  return blocks;
+};
+
+const renderInline = (text: string) => {
+  const parts = text.split(/(`[^`]+`)/g);
+  return parts.map((part, idx) => {
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return (
+        <code key={`code-${idx}`} className="rounded bg-background/70 px-1 py-0.5 text-xs font-mono text-foreground">
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    return <React.Fragment key={`text-${idx}`}>{part}</React.Fragment>;
+  });
+};
+
+const renderMarkdown = (text: string) => {
+  const blocks = parseMarkdownBlocks(text);
+  return blocks.map((block, idx) => {
+    if (block.type === 'heading') {
+      const HeadingTag = block.level <= 2 ? 'h4' : block.level === 3 ? 'h5' : 'h6';
+      return (
+        <HeadingTag key={`heading-${idx}`} className="text-sm font-semibold text-foreground">
+          {renderInline(block.content)}
+        </HeadingTag>
+      );
+    }
+    if (block.type === 'code') {
+      return (
+        <pre
+          key={`codeblock-${idx}`}
+          className="rounded-md border border-border bg-background/70 p-3 text-xs font-mono text-foreground overflow-x-auto"
+        >
+          <code>{block.content}</code>
+        </pre>
+      );
+    }
+    if (block.type === 'list') {
+      const ListTag = block.ordered ? 'ol' : 'ul';
+      return (
+        <ListTag
+          key={`list-${idx}`}
+          className={`text-sm text-foreground space-y-1 ${block.ordered ? 'list-decimal' : 'list-disc'} pl-4`}
+        >
+          {block.items.map((item, itemIdx) => (
+            <li key={`item-${idx}-${itemIdx}`}>{renderInline(item)}</li>
+          ))}
+        </ListTag>
+      );
+    }
+    if (block.type === 'quote') {
+      return (
+        <blockquote
+          key={`quote-${idx}`}
+          className="border-l-2 border-border pl-3 text-sm text-muted-foreground whitespace-pre-wrap"
+        >
+          {renderInline(block.content)}
+        </blockquote>
+      );
+    }
+    return (
+      <p key={`para-${idx}`} className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+        {renderInline(block.content)}
+      </p>
+    );
+  });
+};
+
 type AssistantPaneProps = {
   session: TerminalSession;
   conversationMessages: Map<
@@ -124,7 +292,7 @@ const AssistantPane = ({
   }, [autoApproveEnabled, autoApproveLevel, handleApproveCommand, messages, session.id]);
 
   return (
-    <aside className="w-96 bg-card flex flex-col">
+    <aside className="bg-card flex flex-col h-full">
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
@@ -192,7 +360,11 @@ const AssistantPane = ({
                       msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
                     }`}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    {msg.role === 'assistant' && msg.content ? (
+                      <div className="space-y-2">{renderMarkdown(msg.content)}</div>
+                    ) : (
+                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    )}
                   </div>
                 )}
               </div>

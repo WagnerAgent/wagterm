@@ -21,6 +21,13 @@ const sections: Array<{ id: SectionKey; label: string; icon: React.ReactNode }> 
 const App = () => {
   const [section, setSection] = useState<SectionKey>('connections');
   const [appInfo, setAppInfo] = useState<{ name: string; version: string } | null>(null);
+  const [assistantWidths, setAssistantWidths] = useState<Record<string, number>>({});
+  const resizeRafRef = useRef<number | null>(null);
+  const dragStateRef = useRef<{
+    sessionId: string;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
 
   const sessionsRef = useRef<TerminalSession[]>([]);
   const activeTabRef = useRef<string>('connections');
@@ -65,6 +72,44 @@ const App = () => {
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!dragStateRef.current) {
+        return;
+      }
+      const { sessionId, startX, startWidth } = dragStateRef.current;
+      const delta = startX - event.clientX;
+      const minWidth = 360;
+      const maxWidth = Math.min(720, window.innerWidth - 320);
+      const nextWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + delta));
+      setAssistantWidths((prev) => ({ ...prev, [sessionId]: nextWidth }));
+
+      if (resizeRafRef.current === null) {
+        resizeRafRef.current = window.requestAnimationFrame(() => {
+          resizeRafRef.current = null;
+          window.dispatchEvent(new Event('resize'));
+        });
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (dragStateRef.current) {
+        dragStateRef.current = null;
+        window.dispatchEvent(new Event('resize'));
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      if (resizeRafRef.current !== null) {
+        window.cancelAnimationFrame(resizeRafRef.current);
+      }
+    };
+  }, []);
 
   const sectionTitle = useMemo(() => {
     const current = sections.find((item) => item.id === section);
@@ -117,18 +162,30 @@ const App = () => {
                 className={activeTab === session.id ? 'flex-1 flex overflow-hidden' : 'hidden'}
               >
                 <TerminalPane session={session} attachTerminal={attachTerminal} />
-                <AssistantPane
-                  session={session}
-                  conversationMessages={conversationMessages}
-                  planStepsBySession={planStepsBySession}
-                  conversationInput={conversationInput}
-                  setConversationInput={setConversationInput}
-                  selectedModel={selectedModel}
-                  setSelectedModel={setSelectedModel}
-                  handleSendConversation={handleSendConversation}
-                  handleApproveCommand={handleApproveCommand}
-                  handleRejectCommand={handleRejectCommand}
+                <div
+                  className="w-1 cursor-col-resize bg-border/50 hover:bg-border"
+                  onMouseDown={(event) => {
+                    dragStateRef.current = {
+                      sessionId: session.id,
+                      startX: event.clientX,
+                      startWidth: assistantWidths[session.id] ?? 384
+                    };
+                  }}
                 />
+                <div className="shrink-0 h-full" style={{ width: assistantWidths[session.id] ?? 384 }}>
+                  <AssistantPane
+                    session={session}
+                    conversationMessages={conversationMessages}
+                    planStepsBySession={planStepsBySession}
+                    conversationInput={conversationInput}
+                    setConversationInput={setConversationInput}
+                    selectedModel={selectedModel}
+                    setSelectedModel={setSelectedModel}
+                    handleSendConversation={handleSendConversation}
+                    handleApproveCommand={handleApproveCommand}
+                    handleRejectCommand={handleRejectCommand}
+                  />
+                </div>
               </div>
             ))}
           </div>
