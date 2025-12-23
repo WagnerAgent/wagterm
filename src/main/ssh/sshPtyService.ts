@@ -22,6 +22,7 @@ import type {
 
 type SessionRecord = {
   id: string;
+  profile: ConnectionProfile;
   pty: ReturnType<typeof spawn>;
   tempKeyPath?: string;
 };
@@ -214,6 +215,7 @@ export class SshPtyService {
 
     const record: SessionRecord = {
       id: sessionId,
+      profile: request.profile,
       pty,
       tempKeyPath
     };
@@ -277,6 +279,20 @@ export class SshPtyService {
 
     const { output, truncated } = buffer.getRecent(request.limit);
     return { sessionId: request.sessionId, output, truncated };
+  }
+
+  getSessionContext(sessionId: string) {
+    const record = this.sessions.get(sessionId);
+    if (!record) {
+      return undefined;
+    }
+    return {
+      id: record.id,
+      name: record.profile.name,
+      host: record.profile.host,
+      username: record.profile.username,
+      port: record.profile.port
+    };
   }
 
   private async resolveKeyPath(profile: ConnectionProfile): Promise<{ keyPath?: string; tempKeyPath?: string }> {

@@ -18,7 +18,13 @@ export const IpcChannels = {
   sshSessionResize: 'ssh:session:resize',
   sshSessionClose: 'ssh:session:close',
   sshSessionOutput: 'ssh:session:output',
-  aiGenerate: 'ai:generate',
+  assistantGenerate: 'assistant:generate',
+  assistantStreamStart: 'assistant:stream:start',
+  assistantStreamChunk: 'assistant:stream:chunk',
+  assistantStreamComplete: 'assistant:stream:complete',
+  assistantStreamError: 'assistant:stream:error',
+  assistantAgentEvent: 'assistant:agent:event',
+  assistantAgentAction: 'assistant:agent:action',
   sshSessionData: 'ssh:session:data',
   sshSessionExit: 'ssh:session:exit'
 } as const;

@@ -26,19 +26,59 @@ export type AiCommandProposal = {
 export type AiCommandResponse = {
   commands: AiCommandProposal[];
   message?: string;
+  intent?: 'chat' | 'plan' | 'command';
+  action?:
+    | 'inspect_services'
+    | 'inspect_ports'
+    | 'inspect_disk'
+    | 'inspect_memory'
+    | 'inspect_cpu'
+    | 'inspect_updates'
+    | 'inspect_logs'
+    | 'inspect_processes'
+    | 'fix_issue'
+    | 'deploy'
+    | 'configure'
+    | 'security'
+    | 'network'
+    | 'unknown';
+  done?: boolean;
 };
 
 export type AiGenerateRequest = {
   sessionId: string;
   prompt: string;
   model: AiModel;
-  session: AiSessionContext;
+  session?: AiSessionContext;
   outputLimit?: number;
 };
 
 export type AiGenerateResponse = {
   response: AiCommandResponse;
   rawText?: string;
+};
+
+export type AiStreamStartRequest = AiGenerateRequest & {
+  requestId: string;
+};
+
+export type AiStreamChunkEvent = {
+  requestId: string;
+  sessionId: string;
+  text: string;
+};
+
+export type AiStreamCompleteEvent = {
+  requestId: string;
+  sessionId: string;
+  response: AiCommandResponse;
+  rawText?: string;
+};
+
+export type AiStreamErrorEvent = {
+  requestId: string;
+  sessionId: string;
+  error: string;
 };
 
 export const AI_COMMAND_RESPONSE_SCHEMA = {
@@ -60,13 +100,37 @@ export const AI_COMMAND_RESPONSE_SCHEMA = {
         },
         required: ['command']
       }
-    }
+    },
+    intent: { type: 'string', enum: ['chat', 'plan', 'command'] },
+    action: {
+      type: 'string',
+      enum: [
+        'inspect_services',
+        'inspect_ports',
+        'inspect_disk',
+        'inspect_memory',
+        'inspect_cpu',
+        'inspect_updates',
+        'inspect_logs',
+        'inspect_processes',
+        'fix_issue',
+        'deploy',
+        'configure',
+        'security',
+        'network',
+        'unknown'
+      ]
+    },
+    done: { type: 'boolean' }
   },
   required: ['commands']
 } as const;
 
 export const AI_COMMAND_RESPONSE_EXAMPLE: AiCommandResponse = {
-  message: 'Here are the safe steps to check disk usage.',
+  message: 'I can check disk usage first.',
+  intent: 'command',
+  action: 'inspect_disk',
+  done: false,
   commands: [
     {
       id: 'disk-usage',
@@ -94,6 +158,28 @@ export const parseAiCommandResponse = (input: unknown): AiCommandResponse => {
   }
 
   const message = typeof input.message === 'string' ? input.message : undefined;
+  const intent =
+    input.intent === 'chat' || input.intent === 'plan' || input.intent === 'command'
+      ? input.intent
+      : undefined;
+  const action =
+    input.action === 'inspect_services' ||
+    input.action === 'inspect_ports' ||
+    input.action === 'inspect_disk' ||
+    input.action === 'inspect_memory' ||
+    input.action === 'inspect_cpu' ||
+    input.action === 'inspect_updates' ||
+    input.action === 'inspect_logs' ||
+    input.action === 'inspect_processes' ||
+    input.action === 'fix_issue' ||
+    input.action === 'deploy' ||
+    input.action === 'configure' ||
+    input.action === 'security' ||
+    input.action === 'network' ||
+    input.action === 'unknown'
+      ? input.action
+      : undefined;
+  const done = typeof input.done === 'boolean' ? input.done : undefined;
   const commands: AiCommandProposal[] = [];
 
   for (const item of input.commands) {
@@ -113,5 +199,5 @@ export const parseAiCommandResponse = (input: unknown): AiCommandResponse => {
     });
   }
 
-  return { commands, message };
+  return { commands, message, intent, action, done };
 };

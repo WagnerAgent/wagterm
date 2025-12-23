@@ -34,4 +34,5 @@ export type CommandProposal = {
   risk?: 'low' | 'medium' | 'high';
   requiresApproval: boolean;
   status: 'pending' | 'approved' | 'rejected';
+  statusMessage?: string;
 };

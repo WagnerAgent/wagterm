@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'path';
 import { IpcChannels } from '../shared/ipc';
-import { AiService } from './ai/aiService';
+import { AssistantService } from './assistant/assistantService';
 import { SshMcpService } from './ssh/sshMcpService';
 import { SshPtyService } from './ssh/sshPtyService';
 import { initializeDatabase } from './storage/database';
@@ -29,7 +29,7 @@ const createWindow = () => {
 app.whenReady().then(() => {
   const sshService = new SshMcpService();
   const sshPtyService = new SshPtyService();
-  const aiService = new AiService(sshPtyService);
+  const assistantService = new AssistantService(sshPtyService);
   const db = initializeDatabase(join(app.getPath('userData'), 'wagterm.sqlite'));
   const storageService = new StorageService(db);
 
@@ -76,8 +76,14 @@ app.whenReady().then(() => {
   ipcMain.handle(IpcChannels.sshSessionClose, (_event, request) =>
     sshPtyService.close(request)
   );
-  ipcMain.handle(IpcChannels.aiGenerate, (_event, request) =>
-    aiService.generate(request)
+  ipcMain.handle(IpcChannels.assistantGenerate, (_event, request) =>
+    assistantService.generate(request)
+  );
+  ipcMain.handle(IpcChannels.assistantStreamStart, (event, request) =>
+    assistantService.stream(request, event.sender)
+  );
+  ipcMain.on(IpcChannels.assistantAgentAction, (event, action) =>
+    assistantService.handleAgentAction(action, event.sender)
   );
 
   createWindow();
