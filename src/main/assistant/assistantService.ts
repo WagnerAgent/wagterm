@@ -1,6 +1,5 @@
 import type {
   AiCommandResponse,
-  AiCommandProposal,
   AiGenerateRequest,
   AiGenerateResponse,
   AiModel,
@@ -11,6 +10,7 @@ import type {
 } from '../../shared/assistant';
 import { AI_COMMAND_RESPONSE_EXAMPLE, AI_COMMAND_RESPONSE_SCHEMA, parseAiCommandResponse } from '../../shared/assistant';
 import type { AgentAction, AgentEvent } from '../../shared/agent-ipc';
+import { AgentRunner } from '../../agent/runner';
 import type { SshPtyService } from '../ssh/sshPtyService';
 import type { WebContents } from 'electron';
 import { IpcChannels } from '../../shared/ipc';
@@ -22,15 +22,6 @@ type StreamFilterState = {
   jsonStarted: boolean;
 };
 type StreamChunkHandler = (text: string) => void;
-
-type AgentSessionState = {
-  sessionId: string;
-  state: AgentEvent['state'];
-  goal?: string;
-  step: number;
-  model: AiModel;
-  maxSteps: number;
-};
 
 const JSON_MARKER = 'JSON:';
 const JSON_TAIL_LEN = JSON_MARKER.length - 1;
@@ -257,30 +248,25 @@ const filterStreamingText = (delta: string, state: StreamFilterState): string | 
 
 export class AssistantService {
   private lastAgentSender?: WebContents;
-  private readonly proposalsBySession = new Map<string, Map<string, AiCommandProposal>>();
-  private readonly agentSessions = new Map<string, AgentSessionState>();
+  private readonly runner: AgentRunner;
 
-  constructor(private readonly sshPtyService: SshPtyService) {}
+  constructor(private readonly sshPtyService: SshPtyService) {
+    this.runner = new AgentRunner({
+      buildPrompt: buildAgentPrompt,
+      streamAssistant: (sessionId, prompt, model, outputLimit, onChunk) =>
+        this.streamAssistantRaw(sessionId, prompt, model, outputLimit, onChunk),
+      parseAssistant: (rawText) => this.parseAssistant(rawText),
+      executeCommand: (sessionId, command) =>
+        this.sshPtyService.sendInput({ sessionId, data: `${command}\n` }),
+      emitEvent: (event) => this.sendAgentEvent(event)
+    });
+  }
 
   handleAgentAction(action: AgentAction, sender: WebContents): void {
     this.lastAgentSender = sender;
     console.info('[AgentAction]', action.kind, action.sessionId);
 
-    if (action.kind === 'user_message') {
-      void this.handleUserMessage(action);
-      return;
-    }
-    if (action.kind === 'approve_tool') {
-      this.handleApproveTool(action);
-      return;
-    }
-    if (action.kind === 'reject_tool') {
-      this.handleRejectTool(action);
-      return;
-    }
-    if (action.kind === 'cancel') {
-      this.updateAgentState(action.sessionId, 'finish', 'Cancelled by user.');
-    }
+    this.runner.handleAction(action);
   }
 
   sendAgentEvent(event: AgentEvent, sender?: WebContents): void {
@@ -308,8 +294,7 @@ export class AssistantService {
         : await this.requestAnthropic(request.model, system, user);
 
     const response = parseJsonFromText(rawText);
-    const normalizedResponse = this.trackProposals(request.sessionId, enforceIntentPolicy(response));
-    return { response: normalizedResponse, rawText };
+    return { response: enforceIntentPolicy(response), rawText };
   }
 
   async stream(request: AiStreamStartRequest, sender: WebContents): Promise<void> {
@@ -334,7 +319,7 @@ export class AssistantService {
       if (messageText && !response.message) {
         response.message = messageText;
       }
-      const normalizedResponse = this.trackProposals(request.sessionId, enforceIntentPolicy(response));
+      const normalizedResponse = enforceIntentPolicy(response);
       const payload: AiStreamCompleteEvent = {
         requestId: request.requestId,
         sessionId: request.sessionId,
@@ -640,237 +625,45 @@ export class AssistantService {
     return session;
   }
 
-  private updateAgentState(sessionId: string, state: AgentSessionState['state'], detail?: string) {
-    const session = this.agentSessions.get(sessionId);
-    if (session) {
-      session.state = state;
-    }
-    this.sendAgentEvent({
-      version: 1,
-      kind: 'state_changed',
-      sessionId,
-      timestamp: Date.now(),
-      state,
-      detail
-    });
-  }
-
-  private async handleUserMessage(action: Extract<AgentAction, { kind: 'user_message' }>) {
-    const model = action.model ?? 'gpt-5.2';
-    const session: AgentSessionState = {
-      sessionId: action.sessionId,
-      state: 'intent',
-      goal: action.content,
-      step: 0,
-      model,
-      maxSteps: 8
-    };
-
-    this.agentSessions.set(action.sessionId, session);
-    this.updateAgentState(action.sessionId, 'intent', 'User intent received.');
-
-    await this.runAgentStep(session, 'Initial user request.');
-  }
-
-  private async runAgentStep(session: AgentSessionState, note?: string) {
-    if (session.step >= session.maxSteps) {
-      this.updateAgentState(session.sessionId, 'finish', 'Max step limit reached.');
-      return;
-    }
-
-    this.updateAgentState(session.sessionId, 'plan', `Planning step ${session.step + 1}.`);
-
-    const messageId = randomUUID();
-    let streamedText = '';
-    const onChunk: StreamChunkHandler = (text) => {
-      streamedText += text;
-      this.sendAgentEvent({
-        version: 1,
-        kind: 'message',
-        sessionId: session.sessionId,
-        timestamp: Date.now(),
-        messageId,
-        role: 'assistant',
-        content: streamedText,
-        partial: true
-      });
-    };
-
-    const request: AiStreamStartRequest = {
-      requestId: randomUUID(),
-      sessionId: session.sessionId,
-      prompt: buildAgentPrompt(session.goal ?? '', session.step, note),
-      model: session.model,
-      outputLimit: 4000
-    };
-
+  private async streamAssistantRaw(
+    sessionId: string,
+    prompt: string,
+    model: AiModel,
+    outputLimit: number,
+    onChunk: StreamChunkHandler
+  ): Promise<string> {
     const outputResponse = this.sshPtyService.getRecentOutput({
-      sessionId: request.sessionId,
-      limit: request.outputLimit
+      sessionId,
+      limit: outputLimit
     });
-    const sessionContext = this.resolveSessionContext(request);
+    const sessionContext = this.resolveSessionContext({ sessionId, prompt, model });
     const system = buildStreamingSystemPrompt(outputResponse.output, outputResponse.truncated, sessionContext);
-    const user = buildUserPrompt(request.prompt);
-    const provider = resolveProvider(request.model);
+    const user = buildUserPrompt(prompt);
+    const provider = resolveProvider(model);
 
-    let rawText = '';
-    try {
-      rawText =
-        provider === 'openai'
-          ? await this.streamOpenAi(request, system, user, undefined, onChunk)
-          : await this.streamAnthropic(request, system, user, undefined, onChunk);
-    } catch (error) {
-      this.updateAgentState(session.sessionId, 'error', 'Assistant stream failed.');
-      this.sendAgentEvent({
-        version: 1,
-        kind: 'message',
-        sessionId: session.sessionId,
-        timestamp: Date.now(),
-        messageId,
-        role: 'assistant',
-        content: error instanceof Error ? error.message : 'AI request failed.'
-      });
-      return;
-    }
+    return provider === 'openai'
+      ? await this.streamOpenAi(
+          { requestId: randomUUID(), sessionId, prompt, model, outputLimit },
+          system,
+          user,
+          undefined,
+          onChunk
+        )
+      : await this.streamAnthropic(
+          { requestId: randomUUID(), sessionId, prompt, model, outputLimit },
+          system,
+          user,
+          undefined,
+          onChunk
+        );
+  }
 
+  private parseAssistant(rawText: string) {
     const { messageText, jsonText } = extractStreamingPayload(rawText);
     const parsedResponse = jsonText ? parseJsonFromText(jsonText) : parseJsonFromText(rawText);
     if (messageText && !parsedResponse.message) {
       parsedResponse.message = messageText;
     }
-    const normalizedResponse = this.trackProposals(
-      session.sessionId,
-      enforceIntentPolicy(parsedResponse)
-    );
-
-    const finalMessage = normalizedResponse.message || streamedText || 'AI response received.';
-    this.sendAgentEvent({
-      version: 1,
-      kind: 'message',
-      sessionId: session.sessionId,
-      timestamp: Date.now(),
-      messageId,
-      role: 'assistant',
-      content: finalMessage,
-      partial: false
-    });
-
-    if (normalizedResponse.done || normalizedResponse.commands.length === 0) {
-      this.updateAgentState(session.sessionId, 'finish', 'Agent marked task complete.');
-      return;
-    }
-
-    const proposal = normalizedResponse.commands[0];
-    const toolCallId = proposal.id ?? randomUUID();
-    this.updateAgentState(session.sessionId, 'act', 'Awaiting command approval.');
-    this.sendAgentEvent({
-      version: 1,
-      kind: 'tool_requested',
-      sessionId: session.sessionId,
-      timestamp: Date.now(),
-      toolCall: {
-        id: toolCallId,
-        name: 'execute_command',
-        input: { command: proposal.command },
-        requiresApproval: proposal.requiresApproval,
-        risk: proposal.risk
-      }
-    });
-    this.sendAgentEvent({
-      version: 1,
-      kind: 'waiting_for_approval',
-      sessionId: session.sessionId,
-      timestamp: Date.now(),
-      toolCallId
-    });
-  }
-
-  private trackProposals(sessionId: string, response: AiCommandResponse): AiCommandResponse {
-    if (!response.commands.length) {
-      this.proposalsBySession.delete(sessionId);
-      return response;
-    }
-
-    const commands = response.commands.map((command) => ({
-      ...command,
-      id: command.id ?? randomUUID()
-    }));
-
-    this.proposalsBySession.set(sessionId, new Map(commands.map((command) => [command.id!, command])));
-
-    return { ...response, commands };
-  }
-
-  private handleApproveTool(action: Extract<AgentAction, { kind: 'approve_tool' }>) {
-    const proposals = this.proposalsBySession.get(action.sessionId);
-    const proposal = proposals?.get(action.toolCallId);
-
-    if (!proposal) {
-      this.sendAgentEvent({
-        version: 1,
-        kind: 'tool_result',
-        sessionId: action.sessionId,
-        timestamp: Date.now(),
-        result: {
-          toolCallId: action.toolCallId,
-          status: 'error',
-          error: 'Command proposal not found.'
-        }
-      });
-      return;
-    }
-
-    try {
-      this.sshPtyService.sendInput({
-        sessionId: action.sessionId,
-        data: `${proposal.command}\n`
-      });
-      this.updateAgentState(action.sessionId, 'observe', 'Command executed.');
-      this.sendAgentEvent({
-        version: 1,
-        kind: 'tool_result',
-        sessionId: action.sessionId,
-        timestamp: Date.now(),
-        result: {
-          toolCallId: action.toolCallId,
-          status: 'success',
-          output: `Executed: ${proposal.command}`
-        }
-      });
-      const session = this.agentSessions.get(action.sessionId);
-      if (session) {
-        session.step += 1;
-        this.updateAgentState(action.sessionId, 'reflect', 'Evaluating command output.');
-        void this.runAgentStep(session, `Command executed: ${proposal.command}`);
-      }
-    } catch (error) {
-      this.updateAgentState(action.sessionId, 'error', 'Command execution failed.');
-      this.sendAgentEvent({
-        version: 1,
-        kind: 'tool_result',
-        sessionId: action.sessionId,
-        timestamp: Date.now(),
-        result: {
-          toolCallId: action.toolCallId,
-          status: 'error',
-          error: error instanceof Error ? error.message : 'Command execution failed.'
-        }
-      });
-    }
-  }
-
-  private handleRejectTool(action: Extract<AgentAction, { kind: 'reject_tool' }>) {
-    this.updateAgentState(action.sessionId, 'finish', 'Command rejected.');
-    this.sendAgentEvent({
-      version: 1,
-      kind: 'tool_result',
-      sessionId: action.sessionId,
-      timestamp: Date.now(),
-      result: {
-        toolCallId: action.toolCallId,
-        status: 'cancelled',
-        error: action.reason
-      }
-    });
+    return { response: enforceIntentPolicy(parsedResponse), messageText };
   }
 }

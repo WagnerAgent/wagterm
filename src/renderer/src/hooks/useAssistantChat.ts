@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CommandProposal, TerminalSession } from '../components/app/types';
+import type { AgentPlanStep } from '../../../shared/agent-ipc';
 
 type Message = {
   id: string;
@@ -16,6 +17,7 @@ type UseAiChatOptions = {
 
 export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOptions) => {
   const [conversationMessages, setConversationMessages] = useState<Map<string, Message[]>>(new Map());
+  const [planStepsBySession, setPlanStepsBySession] = useState<Map<string, AgentPlanStep[]>>(new Map());
   const [conversationInput, setConversationInput] = useState('');
   const [selectedModel, setSelectedModel] = useState<
     'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5'
@@ -29,10 +31,20 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOpti
       newMap.set(sessionId, []);
       return newMap;
     });
+    setPlanStepsBySession((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(sessionId, []);
+      return newMap;
+    });
   };
 
   const unregisterSession = (sessionId: string) => {
     setConversationMessages((prev) => {
+      const newMap = new Map(prev);
+      newMap.delete(sessionId);
+      return newMap;
+    });
+    setPlanStepsBySession((prev) => {
       const newMap = new Map(prev);
       newMap.delete(sessionId);
       return newMap;
@@ -214,6 +226,15 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOpti
         return;
       }
 
+      if (event.kind === 'plan_updated') {
+        setPlanStepsBySession((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(event.sessionId, event.steps ?? []);
+          return newMap;
+        });
+        return;
+      }
+
       if (event.kind !== 'tool_result') {
         return;
       }
@@ -250,6 +271,7 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAiChatOpti
 
   return {
     conversationMessages,
+    planStepsBySession,
     conversationInput,
     setConversationInput,
     selectedModel,

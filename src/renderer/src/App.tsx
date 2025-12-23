@@ -57,6 +57,7 @@ const App = () => {
 
   const {
     conversationMessages,
+    planStepsBySession,
     conversationInput,
     setConversationInput,
     selectedModel,
@@ -177,6 +178,7 @@ const App = () => {
               <AiPane
                 session={session}
                 conversationMessages={conversationMessages}
+                planStepsBySession={planStepsBySession}
                 conversationInput={conversationInput}
                 setConversationInput={setConversationInput}
                 selectedModel={selectedModel}

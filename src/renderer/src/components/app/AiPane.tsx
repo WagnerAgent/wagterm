@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowRight, ChevronDown, Terminal as TerminalIcon } from 'lucide-react';
 import { Button } from '../ui/button';
 import type { CommandProposal, TerminalSession } from './types';
+import type { AgentPlanStep } from '../../../shared/agent-ipc';
 
 type AiPaneProps = {
   session: TerminalSession;
@@ -9,6 +10,7 @@ type AiPaneProps = {
     string,
     Array<{ id?: string; role: 'user' | 'assistant'; kind: 'text' | 'proposal'; content?: string; proposal?: CommandProposal }>
   >;
+  planStepsBySession: Map<string, AgentPlanStep[]>;
   conversationInput: string;
   setConversationInput: (value: string) => void;
   selectedModel: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
@@ -21,6 +23,7 @@ type AiPaneProps = {
 const AiPane = ({
   session,
   conversationMessages,
+  planStepsBySession,
   conversationInput,
   setConversationInput,
   selectedModel,
@@ -30,10 +33,34 @@ const AiPane = ({
   handleRejectCommand
 }: AiPaneProps) => {
   const messages = conversationMessages.get(session.id) ?? [];
+  const planSteps = planStepsBySession.get(session.id) ?? [];
 
   return (
     <aside className="w-96 bg-card flex flex-col">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {planSteps.length > 0 && (
+          <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+            <div className="text-xs font-semibold uppercase text-muted-foreground">Plan</div>
+            <ul className="space-y-1">
+              {planSteps.map((step) => (
+                <li key={step.id} className="flex items-start gap-2 text-xs">
+                  <span
+                    className={`mt-0.5 h-2 w-2 rounded-full ${
+                      step.status === 'done'
+                        ? 'bg-emerald-400'
+                        : step.status === 'in_progress'
+                          ? 'bg-yellow-400'
+                          : step.status === 'blocked'
+                            ? 'bg-red-400'
+                            : 'bg-muted-foreground/60'
+                    }`}
+                  />
+                  <span className="text-foreground">{step.description}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
             <div className="bg-muted/50 rounded-full p-4 mb-4">
