@@ -1,0 +1,54 @@
+name: build-and-release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+
+      - name: Rebuild native deps
+        run: npm run rebuild:electron
+
+      - name: Package (publish on tags)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run package -- --publish always
+
+      - name: Package (no publish)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: npm run package -- --publish never
+
+      - name: Upload artifacts (manual builds)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wagterm-${{ matrix.os }}
+          path: release/**
