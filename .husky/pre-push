@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+
+tag=$(git tag --points-at HEAD | head -n 1)
+if [ -z "$tag" ]; then
+  exit 0
+fi
+
+version="${tag#v}"
+current_version=$(node -p "require('./package.json').version")
+
+if [ "$current_version" != "$version" ]; then
+  echo "Wagterm: syncing package.json version to tag $tag"
+  npm version --no-git-tag-version "$version"
+  git add package.json package-lock.json
+  echo "Version updated. Please commit the changes before pushing."
+  exit 1
+fi
+
+exit 0
