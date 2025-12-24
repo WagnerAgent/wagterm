@@ -3,6 +3,7 @@ import { ArrowRight, ChevronDown, Terminal as TerminalIcon } from 'lucide-react'
 import { Button } from '../ui/button';
 import type { CommandProposal, TerminalSession } from './types';
 import type { AgentPlanStep } from '../../../shared/agent-ipc';
+import { useSettingsContext } from '../../context/SettingsContext';
 
 type MarkdownBlock =
   | { type: 'paragraph'; content: string }
@@ -181,9 +182,9 @@ type AssistantPaneProps = {
   planStepsBySession: Map<string, AgentPlanStep[]>;
   conversationInput: string;
   setConversationInput: (value: string) => void;
-  selectedModel: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
+  selectedModel?: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
   setSelectedModel: (value: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5') => void;
-  handleSendConversation: () => void;
+  handleSendConversation: (options?: { maxSteps?: number }) => void;
   handleApproveCommand: (sessionId: string, proposalId: string) => void;
   handleRejectCommand: (sessionId: string, proposalId: string) => void;
 };
@@ -200,16 +201,20 @@ const AssistantPane = ({
   handleApproveCommand,
   handleRejectCommand
 }: AssistantPaneProps) => {
+  const { settings } = useSettingsContext();
   const messages = conversationMessages.get(session.id) ?? [];
   const planSteps = planStepsBySession.get(session.id) ?? [];
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const scrollEndRef = useRef<HTMLDivElement | null>(null);
   const [planExpanded, setPlanExpanded] = useState(false);
   const [autoApproveEnabled, setAutoApproveEnabled] = useState(false);
-  const [autoApproveLevel, setAutoApproveLevel] = useState<'low' | 'high'>('low');
+  const [autoApproveLevel, setAutoApproveLevel] = useState<'low' | 'medium' | 'high'>('low');
+  const [maxStepsMultiplier, setMaxStepsMultiplier] = useState(1);
   const [autoApproveMenuOpen, setAutoApproveMenuOpen] = useState(false);
   const autoApproveMenuRef = useRef<HTMLDivElement | null>(null);
+  const autoApproveTouchedRef = useRef(false);
   const autoApprovedRef = useRef<Set<string>>(new Set());
+  const selectedModelValue = selectedModel ?? settings.defaultModel;
 
   const shouldAutoApprove = (risk?: CommandProposal['risk']) => {
     if (!risk) {
@@ -217,6 +222,9 @@ const AssistantPane = ({
     }
     if (autoApproveLevel === 'high') {
       return true;
+    }
+    if (autoApproveLevel === 'medium') {
+      return risk === 'low' || risk === 'medium';
     }
     return risk === 'low';
   };
@@ -260,6 +268,14 @@ const AssistantPane = ({
       document.removeEventListener('keydown', handleEscape);
     };
   }, [autoApproveMenuOpen]);
+
+  useEffect(() => {
+    if (autoApproveTouchedRef.current) {
+      return;
+    }
+    setAutoApproveEnabled(settings.autoApprovalEnabled);
+    setAutoApproveLevel(settings.autoApprovalThreshold);
+  }, [settings.autoApprovalEnabled, settings.autoApprovalThreshold]);
 
   useEffect(() => {
     if (!autoApproveEnabled) {
@@ -375,7 +391,7 @@ const AssistantPane = ({
       </div>
 
       <div className="p-4 border-t border-border">
-        {planSteps.length > 0 && (
+        {settings.showPlanPanel && planSteps.length > 0 && (
           <div className="rounded-lg border border-border bg-card p-3 mb-3 space-y-2">
             <button
               type="button"
@@ -418,7 +434,7 @@ const AssistantPane = ({
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
-                handleSendConversation();
+                handleSendConversation({ maxSteps: maxStepsMultiplier * 8 });
               }
             }}
             rows={1}
@@ -429,8 +445,8 @@ const AssistantPane = ({
             }}
           />
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-4 min-w-0 flex-1">
               <div className="relative" ref={autoApproveMenuRef}>
                 <button
                   type="button"
@@ -438,7 +454,14 @@ const AssistantPane = ({
                   onClick={() => setAutoApproveMenuOpen((prev) => !prev)}
                   aria-expanded={autoApproveMenuOpen}
                 >
-                  Auto-approve {autoApproveEnabled ? (autoApproveLevel === 'high' ? 'High' : 'Low') : 'Off'}
+                  Auto-approve{' '}
+                  {autoApproveEnabled
+                    ? autoApproveLevel === 'high'
+                      ? 'High'
+                      : autoApproveLevel === 'medium'
+                        ? 'Medium'
+                        : 'Low'
+                    : 'Off'}
                 </button>
                 <ChevronDown className="h-3 w-3 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
                 {autoApproveMenuOpen && (
@@ -449,13 +472,16 @@ const AssistantPane = ({
                         type="button"
                         role="switch"
                         aria-checked={autoApproveEnabled}
-                        onClick={() => setAutoApproveEnabled((prev) => !prev)}
+                        onClick={() => {
+                          autoApproveTouchedRef.current = true;
+                          setAutoApproveEnabled((prev) => !prev);
+                        }}
                         className={`relative h-5 w-9 rounded-full border border-border transition-colors ${
                           autoApproveEnabled ? 'bg-emerald-500/60' : 'bg-muted'
                         }`}
                       >
                         <span
-                          className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-background transition-transform ${
+                          className={`absolute left-0.5 top-[1px] h-4 w-4 rounded-full bg-background transition-transform ${
                             autoApproveEnabled ? 'translate-x-4' : ''
                           }`}
                         />
@@ -465,7 +491,10 @@ const AssistantPane = ({
                       <button
                         type="button"
                         disabled={!autoApproveEnabled}
-                        onClick={() => setAutoApproveLevel('low')}
+                        onClick={() => {
+                          autoApproveTouchedRef.current = true;
+                          setAutoApproveLevel('low');
+                        }}
                         className={`w-full flex items-center justify-between rounded-md px-2 py-1 ${
                           autoApproveLevel === 'low' ? 'bg-muted' : 'hover:bg-muted/60'
                         } ${autoApproveEnabled ? '' : 'opacity-50 cursor-not-allowed'}`}
@@ -478,7 +507,26 @@ const AssistantPane = ({
                       <button
                         type="button"
                         disabled={!autoApproveEnabled}
-                        onClick={() => setAutoApproveLevel('high')}
+                        onClick={() => {
+                          autoApproveTouchedRef.current = true;
+                          setAutoApproveLevel('medium');
+                        }}
+                        className={`w-full flex items-center justify-between rounded-md px-2 py-1 ${
+                          autoApproveLevel === 'medium' ? 'bg-muted' : 'hover:bg-muted/60'
+                        } ${autoApproveEnabled ? '' : 'opacity-50 cursor-not-allowed'}`}
+                      >
+                        <span>Medium risk or lower</span>
+                        {autoApproveLevel === 'medium' && autoApproveEnabled && (
+                          <span className="text-[10px] uppercase text-muted-foreground">Selected</span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!autoApproveEnabled}
+                        onClick={() => {
+                          autoApproveTouchedRef.current = true;
+                          setAutoApproveLevel('high');
+                        }}
                         className={`w-full flex items-center justify-between rounded-md px-2 py-1 ${
                           autoApproveLevel === 'high' ? 'bg-muted' : 'hover:bg-muted/60'
                         } ${autoApproveEnabled ? '' : 'opacity-50 cursor-not-allowed'}`}
@@ -495,8 +543,21 @@ const AssistantPane = ({
 
               <div className="relative">
                 <select
-                  className="appearance-none bg-transparent text-xs text-muted-foreground pr-4 py-1 cursor-pointer focus:outline-none hover:text-foreground transition-colors"
-                  value={selectedModel}
+                  className="appearance-none bg-transparent text-xs text-muted-foreground pr-5 py-1 cursor-pointer focus:outline-none hover:text-foreground transition-colors"
+                  value={maxStepsMultiplier}
+                  onChange={(event) => setMaxStepsMultiplier(Number(event.target.value))}
+                >
+                  <option value={1}>Steps 1x</option>
+                  <option value={2}>Steps 2x</option>
+                  <option value={3}>Steps 3x</option>
+                </select>
+                <ChevronDown className="h-3 w-3 absolute right-0.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+              </div>
+
+              <div className="relative max-w-[120px] min-w-0">
+                <select
+                  className="appearance-none bg-transparent text-xs text-muted-foreground pr-5 py-1 cursor-pointer focus:outline-none hover:text-foreground transition-colors w-full truncate"
+                  value={selectedModelValue}
                   onChange={(event) =>
                     setSelectedModel(
                       event.target.value as 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5'
@@ -508,17 +569,17 @@ const AssistantPane = ({
                     <option value="gpt-5-mini">GPT-5 Mini</option>
                   </optgroup>
                   <optgroup label="Anthropic">
-                    <option value="claude-opus-4.5">Claude Opus 4.5</option>
-                    <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
-                    <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
+                    <option value="claude-opus-4.5">Opus 4.5</option>
+                    <option value="claude-sonnet-4.5">Sonnet 4.5</option>
+                    <option value="claude-haiku-4.5">Haiku 4.5</option>
                   </optgroup>
                 </select>
-                <ChevronDown className="h-3 w-3 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                <ChevronDown className="h-3 w-3 absolute right-0.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
               </div>
             </div>
 
             <Button
-              onClick={handleSendConversation}
+              onClick={() => handleSendConversation({ maxSteps: maxStepsMultiplier * 8 })}
               size="icon"
               className="h-8 w-8 rounded-lg flex-shrink-0"
               disabled={!conversationInput.trim()}

@@ -2,12 +2,21 @@ import React, { useEffect, useState } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useSettingsContext } from '../../context/SettingsContext';
 
 type AiProvider = 'openai' | 'anthropic';
-type SettingsCategory = 'overview' | 'ai-providers' | 'host-key-policy' | 'session-defaults' | 'security' | 'tooling';
+type SettingsCategory =
+  | 'overview'
+  | 'ai-providers'
+  | 'ai-defaults'
+  | 'host-key-policy'
+  | 'session-defaults'
+  | 'security'
+  | 'tooling';
 
 const SettingsPane = () => {
+  const { settings, updateSettings } = useSettingsContext();
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('overview');
   const [aiKeyInputs, setAiKeyInputs] = useState<Record<AiProvider, string>>({
     openai: '',
@@ -81,6 +90,7 @@ const SettingsPane = () => {
 
   const categories = [
     { id: 'ai-providers' as SettingsCategory, title: 'AI Providers', description: 'Store local API keys for OpenAI and Anthropic.' },
+    { id: 'ai-defaults' as SettingsCategory, title: 'AI Defaults', description: 'Default model and agent behaviors for new sessions.' },
     { id: 'host-key-policy' as SettingsCategory, title: 'Host Key Policy', description: 'Choose strict or accept-new behavior for known hosts.' },
     { id: 'session-defaults' as SettingsCategory, title: 'Session Defaults', description: 'Default shell size, fonts, and session timeouts.' },
     { id: 'security' as SettingsCategory, title: 'Security', description: 'Lock screen, local encryption, and audit logs.' },
@@ -173,6 +183,101 @@ const SettingsPane = () => {
             {aiKeyStatus.anthropic.error && (
               <p className="text-xs text-destructive">{aiKeyStatus.anthropic.error}</p>
             )}
+          </div>
+        </div>
+      );
+    }
+
+    if (activeCategory === 'ai-defaults') {
+      return (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="space-y-3 p-5 rounded-lg border border-border bg-card">
+            <Label htmlFor="default-model" className="text-sm font-medium">Default Model</Label>
+            <div className="relative">
+              <select
+                id="default-model"
+                className="appearance-none flex h-10 w-full rounded-md border border-input bg-background pl-3 pr-10 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                value={settings.defaultModel}
+                onChange={(event) =>
+                  updateSettings({
+                    defaultModel: event.target.value as typeof settings.defaultModel
+                  })
+                }
+              >
+                <optgroup label="OpenAI">
+                  <option value="gpt-5.2">GPT-5.2</option>
+                  <option value="gpt-5-mini">GPT-5 Mini</option>
+                </optgroup>
+                <optgroup label="Anthropic">
+                  <option value="claude-opus-4.5">Claude Opus 4.5</option>
+                  <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+                  <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
+                </optgroup>
+              </select>
+              <ChevronDown className="h-4 w-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+            </div>
+            <p className="text-xs text-muted-foreground">Used as the default for new sessions.</p>
+          </div>
+
+          <div className="space-y-3 p-5 rounded-lg border border-border bg-card">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Auto-approval</Label>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.autoApprovalEnabled}
+                onClick={() => updateSettings({ autoApprovalEnabled: !settings.autoApprovalEnabled })}
+                className={`relative h-5 w-9 rounded-full border border-border transition-colors ${
+                  settings.autoApprovalEnabled ? 'bg-emerald-500/60' : 'bg-muted'
+                }`}
+              >
+                <span
+                  className={`absolute left-0.5 top-[1px] h-4 w-4 rounded-full bg-background transition-transform ${
+                    settings.autoApprovalEnabled ? 'translate-x-4' : ''
+                  }`}
+                />
+              </button>
+            </div>
+            <div className="relative">
+              <select
+                className="appearance-none flex h-10 w-full rounded-md border border-input bg-background pl-3 pr-10 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                value={settings.autoApprovalThreshold}
+                onChange={(event) =>
+                  updateSettings({
+                    autoApprovalThreshold: event.target.value as typeof settings.autoApprovalThreshold
+                  })
+                }
+                disabled={!settings.autoApprovalEnabled}
+              >
+                <option value="low">Low risk only</option>
+                <option value="medium">Medium risk or lower</option>
+                <option value="high">High risk (all)</option>
+              </select>
+              <ChevronDown className="h-4 w-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+            </div>
+            <p className="text-xs text-muted-foreground">Applies to new sessions unless overridden.</p>
+          </div>
+
+          <div className="space-y-3 p-5 rounded-lg border border-border bg-card">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Plan Panel</Label>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.showPlanPanel}
+                onClick={() => updateSettings({ showPlanPanel: !settings.showPlanPanel })}
+                className={`relative h-5 w-9 rounded-full border border-border transition-colors ${
+                  settings.showPlanPanel ? 'bg-emerald-500/60' : 'bg-muted'
+                }`}
+              >
+                <span
+                  className={`absolute left-0.5 top-[1px] h-4 w-4 rounded-full bg-background transition-transform ${
+                    settings.showPlanPanel ? 'translate-x-4' : ''
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">Show or hide the plan panel in chat.</p>
           </div>
         </div>
       );

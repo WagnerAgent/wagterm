@@ -13,9 +13,12 @@ export const IpcChannels = {
   keysAdd: 'db:keys:add',
   keysUpdate: 'db:keys:update',
   keysDelete: 'db:keys:delete',
+  keysImportPem: 'db:keys:import-pem',
   settingsGetAiKeys: 'settings:ai-keys:get',
   settingsSetAiKey: 'settings:ai-keys:set',
   settingsClearAiKey: 'settings:ai-keys:clear',
+  settingsGetApp: 'settings:app:get',
+  settingsUpdateApp: 'settings:app:update',
   sshSessionStart: 'ssh:session:start',
   sshSessionInput: 'ssh:session:input',
   sshSessionResize: 'ssh:session:resize',
@@ -29,5 +32,6 @@ export const IpcChannels = {
   assistantAgentEvent: 'assistant:agent:event',
   assistantAgentAction: 'assistant:agent:action',
   sshSessionData: 'ssh:session:data',
-  sshSessionExit: 'ssh:session:exit'
+  sshSessionExit: 'ssh:session:exit',
+  dialogOpenFile: 'app:dialog:open-file'
 } as const;

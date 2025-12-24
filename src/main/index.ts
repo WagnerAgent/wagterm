@@ -1,14 +1,20 @@
 import 'dotenv/config';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { join } from 'path';
+import { mkdir, writeFile, chmod } from 'fs/promises';
+import { randomUUID } from 'crypto';
 import { IpcChannels } from '../shared/ipc';
 import type {
   ClearAiKeyRequest,
   ClearAiKeyResponse,
   GetAiKeysResponse,
+  GetAppSettingsResponse,
   SetAiKeyRequest,
-  SetAiKeyResponse
+  SetAiKeyResponse,
+  UpdateAppSettingsRequest,
+  UpdateAppSettingsResponse
 } from '../shared/settings';
+import type { ImportPemRequest, ImportPemResponse } from '../shared/ssh';
 import { AssistantService } from './assistant/assistantService';
 import { clearAiKey, getAiKey, setAiKey } from './security/credentials';
 import { SshMcpService } from './ssh/sshMcpService';
@@ -96,6 +102,15 @@ app.whenReady().then(() => {
       return { provider: request.provider, configured: false };
     }
   );
+  ipcMain.handle(IpcChannels.settingsGetApp, (): GetAppSettingsResponse => {
+    return { settings: storageService.getAppSettings() };
+  });
+  ipcMain.handle(
+    IpcChannels.settingsUpdateApp,
+    (_event, request: UpdateAppSettingsRequest): UpdateAppSettingsResponse => {
+      return { settings: storageService.updateAppSettings(request.settings) };
+    }
+  );
   ipcMain.handle(IpcChannels.sshSessionStart, (event, request) =>
     sshPtyService.startSession(request, event.sender)
   );
@@ -120,6 +135,33 @@ app.whenReady().then(() => {
   ipcMain.on(IpcChannels.assistantAgentAction, (event, action) =>
     assistantService.handleAgentAction(action, event.sender)
   );
+  ipcMain.handle(
+    IpcChannels.keysImportPem,
+    async (_event, request: ImportPemRequest): Promise<ImportPemResponse> => {
+      const safeName = request.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const fileName = `${randomUUID()}_${safeName || 'key.pem'}`;
+      const baseDir = join(app.getPath('userData'), 'keys');
+      const fullPath = join(baseDir, fileName);
+      await mkdir(baseDir, { recursive: true });
+      await writeFile(fullPath, Buffer.from(request.data));
+    try {
+      await chmod(fullPath, 0o600);
+    } catch {
+      // Best effort on platforms that don't support chmod.
+    }
+      return { path: fullPath };
+    }
+  );
+  ipcMain.handle(IpcChannels.dialogOpenFile, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [
+        { name: 'PEM Files', extensions: ['pem', 'key', 'ppk'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+    return { canceled: result.canceled, path: result.filePaths[0] ?? null };
+  });
 
   createWindow();
 

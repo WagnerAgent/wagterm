@@ -87,6 +87,7 @@ declare global {
           clearPrivateKey?: boolean;
           clearPassphrase?: boolean;
         }) => Promise<{ key: { id: string } }>;
+        importPem: (request: { fileName: string; data: number[] }) => Promise<{ path: string }>;
       };
       ssh: {
         listMcpServers: () => Promise<{ servers: Array<{ id: string }> }>;
@@ -187,6 +188,7 @@ declare global {
             messageId?: string;
             content?: string;
             model?: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
+            maxSteps?: number;
             toolCallId?: string;
             reason?: string;
             context?: Record<string, unknown>;
@@ -243,6 +245,32 @@ declare global {
           provider: 'openai' | 'anthropic';
           configured: boolean;
         }>;
+        getAppSettings: () => Promise<{
+          settings: {
+            defaultModel: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
+            autoApprovalEnabled: boolean;
+            autoApprovalThreshold: 'low' | 'medium' | 'high';
+            showPlanPanel: boolean;
+          };
+        }>;
+        updateAppSettings: (request: {
+          settings: Partial<{
+            defaultModel: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
+            autoApprovalEnabled: boolean;
+            autoApprovalThreshold: 'low' | 'medium' | 'high';
+            showPlanPanel: boolean;
+          }>;
+        }) => Promise<{
+          settings: {
+            defaultModel: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
+            autoApprovalEnabled: boolean;
+            autoApprovalThreshold: 'low' | 'medium' | 'high';
+            showPlanPanel: boolean;
+          };
+        }>;
+      };
+      dialog: {
+        openFile: () => Promise<{ canceled: boolean; path: string | null }>;
       };
     };
   }

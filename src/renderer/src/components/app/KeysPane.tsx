@@ -111,15 +111,19 @@ const KeysPane = ({
                     id="pemFile"
                     type="file"
                     accept=".pem,.key,.ppk"
-                    onChange={(event) => {
+                    onChange={async (event) => {
                       const file = event.target.files?.[0];
-                      const filePath = (file as File & { path?: string })?.path ?? '';
-                      if (!filePath) {
+                      if (!file) {
                         return;
                       }
+                      const buffer = await file.arrayBuffer();
+                      const result = await window.wagterm.storage.importPem({
+                        fileName: file.name,
+                        data: Array.from(new Uint8Array(buffer))
+                      });
                       setKeyForm((prev) => ({
                         ...prev,
-                        path: filePath
+                        path: result.path
                       }));
                     }}
                   />

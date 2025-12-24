@@ -8,7 +8,6 @@ import SettingsPane from './components/app/SettingsPane';
 import Sidebar from './components/app/Sidebar';
 import TerminalPane from './components/app/TerminalPane';
 import type { SectionKey, TerminalSession } from './components/app/types';
-import { KeysProvider } from './context/KeysContext';
 import { useAssistantChat } from './hooks/useAssistantChat';
 import { useSshSessions } from './hooks/useSshSessions';
 
@@ -37,8 +36,8 @@ const App = () => {
     planStepsBySession,
     conversationInput,
     setConversationInput,
-    selectedModel,
-    setSelectedModel,
+    selectedModelBySession,
+    setSelectedModelBySession,
     handleSendConversation,
     handleApproveCommand,
     handleRejectCommand,
@@ -117,78 +116,84 @@ const App = () => {
   }, [section]);
 
   return (
-    <KeysProvider>
-      <div className="flex h-screen bg-background">
-        {activeTab === 'connections' && (
-          <Sidebar section={section} sections={sections} setSection={setSection} appInfo={appInfo} />
-        )}
+    <div className="flex h-screen bg-background">
+      {activeTab === 'connections' && (
+        <Sidebar section={section} sections={sections} setSection={setSection} appInfo={appInfo} />
+      )}
 
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <SessionTabs
-            terminalSessions={terminalSessions}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            closeSession={(id) => {
-              void closeSession(id);
-            }}
-          />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <SessionTabs
+          terminalSessions={terminalSessions}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          closeSession={(id) => {
+            void closeSession(id);
+          }}
+        />
 
-          <div className="flex-1 flex overflow-hidden">
-            {activeTab === 'connections' && (
-              <main className="flex-1 flex flex-col overflow-hidden">
-
-
-                <div className="flex-1 overflow-auto p-8">
-                  {section === 'connections' && (
-                    <ConnectionsPaneContainer
-                      terminalSessions={terminalSessions}
-                      connectToProfile={connectToProfile}
-                    />
-                  )}
-
-                  {section === 'keys' && <KeysPaneContainer />}
-
-                  {section === 'settings' && <SettingsPane />}
-                </div>
-              </main>
-            )}
-
-            {terminalSessions.map((session) => (
-              <div
-                key={session.id}
-                className={activeTab === session.id ? 'flex-1 flex overflow-hidden' : 'hidden'}
-              >
-                <TerminalPane session={session} attachTerminal={attachTerminal} />
-                <div
-                  className="w-1 cursor-col-resize bg-border/50 hover:bg-border"
-                  onMouseDown={(event) => {
-                    dragStateRef.current = {
-                      sessionId: session.id,
-                      startX: event.clientX,
-                      startWidth: assistantWidths[session.id] ?? 384
-                    };
-                  }}
-                />
-                <div className="shrink-0 h-full" style={{ width: assistantWidths[session.id] ?? 384 }}>
-                  <AssistantPane
-                    session={session}
-                    conversationMessages={conversationMessages}
-                    planStepsBySession={planStepsBySession}
-                    conversationInput={conversationInput}
-                    setConversationInput={setConversationInput}
-                    selectedModel={selectedModel}
-                    setSelectedModel={setSelectedModel}
-                    handleSendConversation={handleSendConversation}
-                    handleApproveCommand={handleApproveCommand}
-                    handleRejectCommand={handleRejectCommand}
+        <div className="flex-1 flex overflow-hidden">
+          {activeTab === 'connections' && (
+            <main className="flex-1 flex flex-col overflow-hidden">
+              <header className="border-b border-border px-8 py-6">
+                <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Workspace</p>
+                <h2 className="text-2xl font-semibold mt-1">{sectionTitle}</h2>
+              </header>
+              <div className="flex-1 overflow-auto p-8">
+                {section === 'connections' && (
+                  <ConnectionsPaneContainer
+                    terminalSessions={terminalSessions}
+                    connectToProfile={connectToProfile}
                   />
-                </div>
+                )}
+
+                {section === 'keys' && <KeysPaneContainer />}
+
+                {section === 'settings' && <SettingsPane />}
               </div>
-            ))}
-          </div>
+            </main>
+          )}
+
+          {terminalSessions.map((session) => (
+            <div
+              key={session.id}
+              className={activeTab === session.id ? 'flex-1 flex overflow-hidden' : 'hidden'}
+            >
+              <TerminalPane session={session} attachTerminal={attachTerminal} />
+              <div
+                className="w-1 cursor-col-resize bg-border/50 hover:bg-border"
+                onMouseDown={(event) => {
+                  dragStateRef.current = {
+                    sessionId: session.id,
+                    startX: event.clientX,
+                    startWidth: assistantWidths[session.id] ?? 384
+                  };
+                }}
+              />
+              <div className="shrink-0 h-full" style={{ width: assistantWidths[session.id] ?? 384 }}>
+                <AssistantPane
+                  session={session}
+                  conversationMessages={conversationMessages}
+                  planStepsBySession={planStepsBySession}
+                  conversationInput={conversationInput}
+                  setConversationInput={setConversationInput}
+                  selectedModel={selectedModelBySession.get(session.id)}
+                  setSelectedModel={(model) =>
+                    setSelectedModelBySession((prev) => {
+                      const next = new Map(prev);
+                      next.set(session.id, model);
+                      return next;
+                    })
+                  }
+                  handleSendConversation={handleSendConversation}
+                  handleApproveCommand={handleApproveCommand}
+                  handleRejectCommand={handleRejectCommand}
+                />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
-    </KeysProvider>
+    </div>
   );
 };
 
