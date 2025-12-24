@@ -10,6 +10,7 @@ import TerminalPane from './components/app/TerminalPane';
 import type { SectionKey, TerminalSession } from './components/app/types';
 import { useAssistantChat } from './hooks/useAssistantChat';
 import { useSshSessions } from './hooks/useSshSessions';
+import WagtermIcon from './assets/wagterm_icon.svg';
 
 const sections: Array<{ id: SectionKey; label: string; icon: React.ReactNode }> = [
   { id: 'connections', label: 'Connections', icon: <Server className="h-4 w-4" /> },
@@ -18,6 +19,8 @@ const sections: Array<{ id: SectionKey; label: string; icon: React.ReactNode }> 
 ];
 
 const App = () => {
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashFading, setSplashFading] = useState(false);
   const [section, setSection] = useState<SectionKey>('connections');
   const [appInfo, setAppInfo] = useState<{ name: string; version: string } | null>(null);
   const [assistantWidths, setAssistantWidths] = useState<Record<string, number>>({});
@@ -62,6 +65,19 @@ const App = () => {
 
   useEffect(() => {
     window.wagterm.getAppInfo().then(setAppInfo);
+  }, []);
+
+  useEffect(() => {
+    const fadeTimer = setTimeout(() => {
+      setSplashFading(true);
+    }, 1200);
+    const hideTimer = setTimeout(() => {
+      setShowSplash(false);
+    }, 1700);
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(hideTimer);
+    };
   }, []);
 
   useEffect(() => {
@@ -114,6 +130,18 @@ const App = () => {
     const current = sections.find((item) => item.id === section);
     return current?.label ?? 'Connections';
   }, [section]);
+
+  if (showSplash) {
+    return (
+      <div
+        className={`fixed inset-0 bg-background flex items-center justify-center transition-opacity duration-500 ${
+          splashFading ? 'opacity-0' : 'opacity-100'
+        }`}
+      >
+        <img src={WagtermIcon} alt="Wagterm" className="w-24 h-24 animate-pulse" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-background">
