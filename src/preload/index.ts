@@ -15,6 +15,8 @@ import type {
   DeleteConnectionResponse,
   DeleteKeyRequest,
   DeleteKeyResponse,
+  ImportPemRequest,
+  ImportPemResponse,
   DisconnectResponse,
   ListConnectionProfilesResponse,
   ListConnectionsResponse,
@@ -32,6 +34,16 @@ import type {
   UpdateConnectionRequest,
   UpdateConnectionResponse
 } from '../shared/ssh';
+import type {
+  ClearAiKeyRequest,
+  ClearAiKeyResponse,
+  GetAiKeysResponse,
+  GetAppSettingsResponse,
+  SetAiKeyRequest,
+  SetAiKeyResponse,
+  UpdateAppSettingsRequest,
+  UpdateAppSettingsResponse
+} from '../shared/settings';
 import type {
   AiGenerateRequest,
   AiGenerateResponse,
@@ -59,7 +71,9 @@ contextBridge.exposeInMainWorld('wagterm', {
     updateKey: (request: UpdateKeyRequest): Promise<UpdateKeyResponse> =>
       ipcRenderer.invoke(IpcChannels.keysUpdate, request),
     deleteKey: (request: DeleteKeyRequest): Promise<DeleteKeyResponse> =>
-      ipcRenderer.invoke(IpcChannels.keysDelete, request)
+      ipcRenderer.invoke(IpcChannels.keysDelete, request),
+    importPem: (request: ImportPemRequest): Promise<ImportPemResponse> =>
+      ipcRenderer.invoke(IpcChannels.keysImportPem, request)
   },
   ssh: {
     listMcpServers: (): Promise<ListMcpServersResponse> =>
@@ -130,5 +144,21 @@ contextBridge.exposeInMainWorld('wagterm', {
         return () => ipcRenderer.removeAllListeners(IpcChannels.assistantAgentEvent);
       }
     }
+  },
+  dialog: {
+    openFile: (): Promise<{ canceled: boolean; path: string | null }> =>
+      ipcRenderer.invoke(IpcChannels.dialogOpenFile)
+  },
+  settings: {
+    getAiKeys: (): Promise<GetAiKeysResponse> =>
+      ipcRenderer.invoke(IpcChannels.settingsGetAiKeys),
+    setAiKey: (request: SetAiKeyRequest): Promise<SetAiKeyResponse> =>
+      ipcRenderer.invoke(IpcChannels.settingsSetAiKey, request),
+    clearAiKey: (request: ClearAiKeyRequest): Promise<ClearAiKeyResponse> =>
+      ipcRenderer.invoke(IpcChannels.settingsClearAiKey, request),
+    getAppSettings: (): Promise<GetAppSettingsResponse> =>
+      ipcRenderer.invoke(IpcChannels.settingsGetApp),
+    updateAppSettings: (request: UpdateAppSettingsRequest): Promise<UpdateAppSettingsResponse> =>
+      ipcRenderer.invoke(IpcChannels.settingsUpdateApp, request)
   }
 });

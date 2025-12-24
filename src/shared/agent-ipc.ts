@@ -83,6 +83,7 @@ export type AgentAction =
       messageId: string;
       content: string;
       model?: AiModel;
+      maxSteps?: number;
     })
   | (AgentActionBase & {
       kind: 'approve_tool';

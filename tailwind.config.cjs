@@ -15,8 +15,8 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        sans: ['"Space Grotesk"', '"Avenir Next"', '"Trebuchet MS"', 'sans-serif'],
-        mono: ['"Space Mono"', '"SFMono-Regular"', 'Menlo', 'monospace']
+        sans: ['Ubuntu', 'system-ui', 'sans-serif'],
+        mono: ['"Ubuntu Mono"', '"SFMono-Regular"', 'Menlo', 'monospace']
       },
       colors: {
         border: 'hsl(var(--border))',

@@ -33,6 +33,11 @@ export const initializeDatabase = (dbPath: string): Database.Database => {
       path TEXT,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   const connectionColumns = db

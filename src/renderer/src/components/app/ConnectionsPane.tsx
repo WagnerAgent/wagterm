@@ -53,15 +53,14 @@ const ConnectionsPane = ({
   connectToProfile
 }: ConnectionsPaneProps) => {
   return (
-    <div className="space-y-8">
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-semibold">Connection Profiles</h3>
-            <p className="text-sm text-muted-foreground">Manage EC2, Droplets, and local hosts</p>
-          </div>
+    <div className="h-full flex flex-col">
+      <div className="px-6 pt-6 pb-4 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Connection Profiles</h3>
+          <p className="text-sm text-muted-foreground mt-1">Manage EC2, Droplets, and local hosts</p>
+        </div>
 
-          <Sheet open={connectionSheetOpen} onOpenChange={setConnectionSheetOpen}>
+        <Sheet open={connectionSheetOpen} onOpenChange={setConnectionSheetOpen}>
             <SheetTrigger asChild>
               <Button onClick={() => resetConnectionForm()}>
                 <Plus className="h-4 w-4 mr-2" />
@@ -218,9 +217,10 @@ const ConnectionsPane = ({
                 <Button onClick={handleConnectionSave}>{editingConnectionId ? 'Update' : 'Create'}</Button>
               </SheetFooter>
             </SheetContent>
-          </Sheet>
-        </div>
+        </Sheet>
+      </div>
 
+      <div className="flex-1 overflow-y-auto px-6 pb-6">
         {connections.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12">

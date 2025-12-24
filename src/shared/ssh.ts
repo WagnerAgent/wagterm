@@ -138,6 +138,15 @@ export type ListKeysResponse = {
   keys: KeyRecord[];
 };
 
+export type ImportPemRequest = {
+  fileName: string;
+  data: number[];
+};
+
+export type ImportPemResponse = {
+  path: string;
+};
+
 export type HostKeyPolicy = 'strict' | 'accept-new';
 
 export type SshSessionStartRequest = {

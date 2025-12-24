@@ -80,7 +80,7 @@ export class AgentRunner {
       goal: action.content,
       step: 0,
       model,
-      maxSteps: 8
+      maxSteps: action.maxSteps ?? 8
     };
 
     this.sessions.set(action.sessionId, session);

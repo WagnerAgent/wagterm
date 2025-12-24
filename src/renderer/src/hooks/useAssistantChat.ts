@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CommandProposal, TerminalSession } from '../components/app/types';
 import type { AgentPlanStep } from '../../../shared/agent-ipc';
+import { useSettingsContext } from '../context/SettingsContext';
 
 type Message = {
   id: string;
@@ -16,12 +17,13 @@ type UseAssistantChatOptions = {
 };
 
 export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAssistantChatOptions) => {
+  const { settings } = useSettingsContext();
   const [conversationMessages, setConversationMessages] = useState<Map<string, Message[]>>(new Map());
   const [planStepsBySession, setPlanStepsBySession] = useState<Map<string, AgentPlanStep[]>>(new Map());
   const [conversationInput, setConversationInput] = useState('');
-  const [selectedModel, setSelectedModel] = useState<
-    'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5'
-  >('gpt-5.2');
+  const [selectedModelBySession, setSelectedModelBySession] = useState<
+    Map<string, 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5'>
+  >(new Map());
 
   const conversationMessagesRef = useRef<Map<string, Message[]>>(new Map());
 
@@ -36,6 +38,13 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAssistantC
       newMap.set(sessionId, []);
       return newMap;
     });
+    setSelectedModelBySession((prev) => {
+      const newMap = new Map(prev);
+      if (!newMap.has(sessionId)) {
+        newMap.set(sessionId, settings.defaultModel);
+      }
+      return newMap;
+    });
   };
 
   const unregisterSession = (sessionId: string) => {
@@ -45,6 +54,11 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAssistantC
       return newMap;
     });
     setPlanStepsBySession((prev) => {
+      const newMap = new Map(prev);
+      newMap.delete(sessionId);
+      return newMap;
+    });
+    setSelectedModelBySession((prev) => {
       const newMap = new Map(prev);
       newMap.delete(sessionId);
       return newMap;
@@ -121,7 +135,7 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAssistantC
     });
   };
 
-  const handleSendConversation = async () => {
+  const handleSendConversation = async (options?: { maxSteps?: number }) => {
     const activeTab = getActiveTab();
     if (!conversationInput.trim() || !activeTab || activeTab === 'connections') return;
 
@@ -171,7 +185,8 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAssistantC
       kind: 'user_message',
       messageId: userMessageId,
       content: userMessage,
-      model: selectedModel
+      model: selectedModelBySession.get(sessionId) ?? settings.defaultModel,
+      maxSteps: options?.maxSteps
     });
   };
 
@@ -272,8 +287,8 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAssistantC
     planStepsBySession,
     conversationInput,
     setConversationInput,
-    selectedModel,
-    setSelectedModel,
+    selectedModelBySession,
+    setSelectedModelBySession,
     handleSendConversation,
     handleApproveCommand,
     handleRejectCommand,

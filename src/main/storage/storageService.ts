@@ -19,11 +19,53 @@ import type {
   UpdateKeyRequest,
   UpdateKeyResponse
 } from '../../shared/ssh';
+import type { AppSettings, AutoApprovalThreshold } from '../../shared/settings';
 
 const SERVICE_NAME = 'wagterm';
 const privateKeyAccount = (id: string) => `${id}:private`;
 const passphraseAccount = (id: string) => `${id}:passphrase`;
 const connectionPasswordAccount = (id: string) => `${id}:password`;
+
+const SETTINGS_DEFAULTS: AppSettings = {
+  defaultModel: 'gpt-5.2',
+  autoApprovalEnabled: false,
+  autoApprovalThreshold: 'low',
+  showPlanPanel: true
+};
+
+const SETTINGS_KEYS = {
+  defaultModel: 'default_model',
+  autoApprovalEnabled: 'auto_approval_enabled',
+  autoApprovalThreshold: 'auto_approval_threshold',
+  showPlanPanel: 'show_plan_panel'
+} as const;
+
+const parseBoolean = (value: string | undefined, fallback: boolean) => {
+  if (value === undefined) {
+    return fallback;
+  }
+  return value === 'true';
+};
+
+const parseThreshold = (value: string | undefined, fallback: AutoApprovalThreshold) => {
+  if (value === 'low' || value === 'medium' || value === 'high') {
+    return value;
+  }
+  return fallback;
+};
+
+const parseModel = (value: string | undefined, fallback: AppSettings['defaultModel']) => {
+  if (
+    value === 'gpt-5.2' ||
+    value === 'gpt-5-mini' ||
+    value === 'claude-sonnet-4.5' ||
+    value === 'claude-opus-4.5' ||
+    value === 'claude-haiku-4.5'
+  ) {
+    return value;
+  }
+  return fallback;
+};
 
 const validateConnectionProfile = (
   profile: ConnectionProfile,
@@ -91,6 +133,71 @@ const validateKeyRecord = (key: KeyRecord): string[] => {
 
 export class StorageService {
   constructor(private readonly db: Database.Database) {}
+
+  getAppSettings(): AppSettings {
+    const rows = this.db
+      .prepare('SELECT key, value FROM settings WHERE key IN (?, ?, ?, ?)')
+      .all(
+        SETTINGS_KEYS.defaultModel,
+        SETTINGS_KEYS.autoApprovalEnabled,
+        SETTINGS_KEYS.autoApprovalThreshold,
+        SETTINGS_KEYS.showPlanPanel
+      ) as Array<{ key: string; value: string }>;
+
+    const byKey = new Map(rows.map((row) => [row.key, row.value]));
+
+    return {
+      defaultModel: parseModel(
+        byKey.get(SETTINGS_KEYS.defaultModel),
+        SETTINGS_DEFAULTS.defaultModel
+      ),
+      autoApprovalEnabled: parseBoolean(
+        byKey.get(SETTINGS_KEYS.autoApprovalEnabled),
+        SETTINGS_DEFAULTS.autoApprovalEnabled
+      ),
+      autoApprovalThreshold: parseThreshold(
+        byKey.get(SETTINGS_KEYS.autoApprovalThreshold),
+        SETTINGS_DEFAULTS.autoApprovalThreshold
+      ),
+      showPlanPanel: parseBoolean(
+        byKey.get(SETTINGS_KEYS.showPlanPanel),
+        SETTINGS_DEFAULTS.showPlanPanel
+      )
+    };
+  }
+
+  updateAppSettings(settings: Partial<AppSettings>): AppSettings {
+    const entries: Array<[string, string]> = [];
+
+    if (settings.defaultModel) {
+      entries.push([SETTINGS_KEYS.defaultModel, settings.defaultModel]);
+    }
+    if (settings.autoApprovalEnabled !== undefined) {
+      entries.push([SETTINGS_KEYS.autoApprovalEnabled, String(settings.autoApprovalEnabled)]);
+    }
+    if (settings.autoApprovalThreshold) {
+      entries.push([SETTINGS_KEYS.autoApprovalThreshold, settings.autoApprovalThreshold]);
+    }
+    if (settings.showPlanPanel !== undefined) {
+      entries.push([SETTINGS_KEYS.showPlanPanel, String(settings.showPlanPanel)]);
+    }
+
+    if (entries.length > 0) {
+      const statement = this.db.prepare(`
+        INSERT INTO settings (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `);
+      const transaction = this.db.transaction(() => {
+        for (const entry of entries) {
+          statement.run(entry[0], entry[1]);
+        }
+      });
+      transaction();
+    }
+
+    return this.getAppSettings();
+  }
 
   addConnection(request: AddConnectionRequest): AddConnectionResponse {
     const errors = validateConnectionProfile(request.profile, request.password, true);
