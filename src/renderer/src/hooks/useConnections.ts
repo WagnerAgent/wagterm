@@ -10,7 +10,15 @@ const emptyConnectionForm = {
   authMethod: 'pem' as 'pem' | 'password',
   password: '',
   hostKeyPolicy: 'strict' as 'strict' | 'accept-new',
-  knownHostsPath: ''
+  knownHostsPath: '',
+  jumpEnabled: false,
+  jumpHost: '',
+  jumpPort: 22,
+  jumpUsername: '',
+  jumpCredentialId: '',
+  jumpAuthMethod: 'pem' as 'pem' | 'password',
+  jumpHostKeyPolicy: 'strict' as 'strict' | 'accept-new',
+  jumpKnownHostsPath: ''
 };
 
 type ConnectionForm = typeof emptyConnectionForm;
@@ -49,6 +57,20 @@ export const useConnections = ({ keys }: UseConnectionsOptions) => {
       setConnectionError('Password is required.');
       return;
     }
+    if (connectionForm.jumpEnabled) {
+      if (!connectionForm.jumpHost.trim()) {
+        setConnectionError('Jump host is required.');
+        return;
+      }
+      if (!connectionForm.jumpUsername.trim()) {
+        setConnectionError('Jump host username is required.');
+        return;
+      }
+      if (connectionForm.jumpAuthMethod === 'pem' && !connectionForm.jumpCredentialId.trim()) {
+        setConnectionError('Jump host SSH key is required.');
+        return;
+      }
+    }
 
     const payload = {
       profile: {
@@ -64,7 +86,22 @@ export const useConnections = ({ keys }: UseConnectionsOptions) => {
             ? keyById.get(connectionForm.credentialId)?.path ?? undefined
             : undefined,
         hostKeyPolicy: connectionForm.hostKeyPolicy,
-        knownHostsPath: connectionForm.knownHostsPath.trim() || undefined
+        knownHostsPath: connectionForm.knownHostsPath.trim() || undefined,
+        jumpHost: connectionForm.jumpEnabled
+          ? {
+              host: connectionForm.jumpHost.trim(),
+              port: Number(connectionForm.jumpPort),
+              username: connectionForm.jumpUsername.trim(),
+              authMethod: connectionForm.jumpAuthMethod,
+              credentialId: connectionForm.jumpCredentialId.trim() || undefined,
+              keyPath:
+                connectionForm.jumpAuthMethod === 'pem'
+                  ? keyById.get(connectionForm.jumpCredentialId)?.path ?? undefined
+                  : undefined,
+              hostKeyPolicy: connectionForm.jumpHostKeyPolicy,
+              knownHostsPath: connectionForm.jumpKnownHostsPath.trim() || undefined
+            }
+          : undefined
       },
       password: connectionForm.authMethod === 'password' ? connectionForm.password.trim() : undefined
     };

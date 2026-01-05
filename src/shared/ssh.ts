@@ -13,6 +13,18 @@ export type ConnectionProfile = {
   keyPath?: string;
   hostKeyPolicy?: HostKeyPolicy;
   knownHostsPath?: string;
+  jumpHost?: JumpHostConfig;
+};
+
+export type JumpHostConfig = {
+  host: string;
+  port: number;
+  username: string;
+  authMethod: SshAuthMethod;
+  credentialId?: string;
+  keyPath?: string;
+  hostKeyPolicy?: HostKeyPolicy;
+  knownHostsPath?: string;
 };
 
 export type KeyRecord = {

@@ -10,6 +10,18 @@ export type ConnectionProfile = {
   credentialId?: string;
   hostKeyPolicy?: 'strict' | 'accept-new';
   knownHostsPath?: string;
+  jumpHost?: JumpHostConfig;
+};
+
+export type JumpHostConfig = {
+  host: string;
+  port: number;
+  username: string;
+  authMethod: 'pem' | 'password';
+  credentialId?: string;
+  keyPath?: string;
+  hostKeyPolicy?: 'strict' | 'accept-new';
+  knownHostsPath?: string;
 };
 
 export type KeyRecord = {

@@ -9,6 +9,8 @@ import { IpcChannels } from '../../shared/ipc';
 import type {
   ConnectionProfile,
   HostKeyPolicy,
+  JumpHostConfig,
+  SshAuthMethod,
   SshSessionCloseRequest,
   SshSessionDataEvent,
   SshSessionExitEvent,
@@ -25,6 +27,7 @@ type SessionRecord = {
   profile: ConnectionProfile;
   pty: ReturnType<typeof spawn>;
   tempKeyPath?: string;
+  tempJumpKeyPath?: string;
 };
 
 const OUTPUT_BUFFER_LIMIT = 20000;
@@ -75,7 +78,9 @@ const buildSshArgs = (
   profile: ConnectionProfile,
   policy: HostKeyPolicy,
   knownHostsPath?: string,
-  keyPathOverride?: string
+  keyPathOverride?: string,
+  jumpHost?: JumpHostConfig,
+  jumpKeyPath?: string
 ) => {
   const args: string[] = [];
 
@@ -97,6 +102,27 @@ const buildSshArgs = (
     args.push('-o', `UserKnownHostsFile=${knownHostsPath}`);
   } else if (profile.knownHostsPath) {
     args.push('-o', `UserKnownHostsFile=${profile.knownHostsPath}`);
+  }
+
+  if (jumpHost) {
+    const proxyParts = ['ssh', '-W', '%h:%p'];
+    if (jumpHost.port) {
+      proxyParts.push('-p', String(jumpHost.port));
+    }
+    if (jumpKeyPath) {
+      proxyParts.push('-i', jumpKeyPath);
+    }
+    const jumpPolicy = resolveHostKeyPolicy(jumpHost.hostKeyPolicy);
+    if (jumpPolicy === 'accept-new') {
+      proxyParts.push('-o', 'StrictHostKeyChecking=accept-new');
+    } else if (jumpPolicy === 'strict') {
+      proxyParts.push('-o', 'StrictHostKeyChecking=yes');
+    }
+    if (jumpHost.knownHostsPath) {
+      proxyParts.push('-o', `UserKnownHostsFile=${jumpHost.knownHostsPath}`);
+    }
+    proxyParts.push(`${jumpHost.username}@${jumpHost.host}`);
+    args.push('-o', `ProxyCommand=${proxyParts.join(' ')}`);
   }
 
   args.push(`${profile.username}@${profile.host}`);
@@ -168,6 +194,28 @@ const validateProfile = (profile: ConnectionProfile): string[] => {
     errors.push('Known hosts path must be absolute.');
   }
 
+  if (profile.jumpHost) {
+    const jump = profile.jumpHost;
+    if (!jump.host.trim()) {
+      errors.push('Jump host must be a hostname or IP.');
+    }
+    if (!jump.username.trim()) {
+      errors.push('Jump host username is required.');
+    }
+    if (!isValidPort(jump.port)) {
+      errors.push('Jump host port must be 1-65535.');
+    }
+    if (jump.authMethod === 'pem' && !jump.keyPath && !jump.credentialId) {
+      errors.push('Jump host SSH key is required.');
+    }
+    if (jump.keyPath && !isAbsolute(jump.keyPath)) {
+      errors.push('Jump host key path must be absolute.');
+    }
+    if (jump.knownHostsPath && !isAbsolute(jump.knownHostsPath)) {
+      errors.push('Jump host known hosts path must be absolute.');
+    }
+  }
+
   return errors;
 };
 
@@ -178,6 +226,8 @@ const isLocalKnownHostsPath = (pathValue?: string): boolean => {
 
   return isAbsolute(pathValue);
 };
+
+const isPemAuth = (authMethod: SshAuthMethod): boolean => authMethod === 'pem';
 
 export class SshPtyService {
   private readonly sessions = new Map<string, SessionRecord>();
@@ -199,8 +249,27 @@ export class SshPtyService {
     }
 
     const policy = resolveHostKeyPolicy(request.hostKeyPolicy ?? request.profile.hostKeyPolicy);
-    const { keyPath, tempKeyPath } = await this.resolveKeyPath(request.profile);
-    const args = buildSshArgs(request.profile, policy, request.knownHostsPath, keyPath);
+    const { keyPath, tempKeyPath } = await this.resolveKeyPath({
+      authMethod: request.profile.authMethod,
+      keyPath: request.profile.keyPath,
+      credentialId: request.profile.credentialId
+    });
+    const jumpHost = request.profile.jumpHost;
+    const { keyPath: jumpKeyPath, tempKeyPath: tempJumpKeyPath } = jumpHost
+      ? await this.resolveKeyPath({
+          authMethod: jumpHost.authMethod,
+          keyPath: jumpHost.keyPath,
+          credentialId: jumpHost.credentialId
+        })
+      : { keyPath: undefined, tempKeyPath: undefined };
+    const args = buildSshArgs(
+      request.profile,
+      policy,
+      request.knownHostsPath,
+      keyPath,
+      jumpHost,
+      jumpKeyPath
+    );
 
     const sessionId = randomUUID();
     const pty = spawn('ssh', args, {
@@ -217,7 +286,8 @@ export class SshPtyService {
       id: sessionId,
       profile: request.profile,
       pty,
-      tempKeyPath
+      tempKeyPath,
+      tempJumpKeyPath
     };
 
     this.sessions.set(sessionId, record);
@@ -236,6 +306,7 @@ export class SshPtyService {
       this.sessions.delete(sessionId);
       this.outputBuffers.delete(sessionId);
       void this.cleanupTempKey(tempKeyPath);
+      void this.cleanupTempKey(tempJumpKeyPath);
     });
 
     return { sessionId };
@@ -267,6 +338,7 @@ export class SshPtyService {
 
     record.pty.kill();
     void this.cleanupTempKey(record.tempKeyPath);
+    void this.cleanupTempKey(record.tempJumpKeyPath);
     this.sessions.delete(request.sessionId);
     this.outputBuffers.delete(request.sessionId);
   }
@@ -295,20 +367,24 @@ export class SshPtyService {
     };
   }
 
-  private async resolveKeyPath(profile: ConnectionProfile): Promise<{ keyPath?: string; tempKeyPath?: string }> {
-    if (profile.authMethod !== 'pem') {
+  private async resolveKeyPath(source: {
+    authMethod: SshAuthMethod;
+    keyPath?: string;
+    credentialId?: string;
+  }): Promise<{ keyPath?: string; tempKeyPath?: string }> {
+    if (!isPemAuth(source.authMethod)) {
       return {};
     }
 
-    if (profile.keyPath) {
-      return { keyPath: profile.keyPath };
+    if (source.keyPath) {
+      return { keyPath: source.keyPath };
     }
 
-    if (!profile.credentialId) {
+    if (!source.credentialId) {
       return {};
     }
 
-    const privateKey = await keytar.getPassword(this.serviceName, `${profile.credentialId}:private`);
+    const privateKey = await keytar.getPassword(this.serviceName, `${source.credentialId}:private`);
     if (!privateKey) {
       throw new Error('No private key found for this credential. Re-add the SSH key.');
     }

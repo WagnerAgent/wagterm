@@ -21,6 +21,14 @@ export const initializeDatabase = (dbPath: string): Database.Database => {
       key_path TEXT,
       host_key_policy TEXT,
       known_hosts_path TEXT,
+      jump_host TEXT,
+      jump_port INTEGER,
+      jump_username TEXT,
+      jump_auth_method TEXT,
+      jump_credential_id TEXT,
+      jump_key_path TEXT,
+      jump_host_key_policy TEXT,
+      jump_known_hosts_path TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -54,6 +62,14 @@ export const initializeDatabase = (dbPath: string): Database.Database => {
   addColumnIfMissing('key_path', 'key_path TEXT');
   addColumnIfMissing('host_key_policy', 'host_key_policy TEXT');
   addColumnIfMissing('known_hosts_path', 'known_hosts_path TEXT');
+  addColumnIfMissing('jump_host', 'jump_host TEXT');
+  addColumnIfMissing('jump_port', 'jump_port INTEGER');
+  addColumnIfMissing('jump_username', 'jump_username TEXT');
+  addColumnIfMissing('jump_auth_method', 'jump_auth_method TEXT');
+  addColumnIfMissing('jump_credential_id', 'jump_credential_id TEXT');
+  addColumnIfMissing('jump_key_path', 'jump_key_path TEXT');
+  addColumnIfMissing('jump_host_key_policy', 'jump_host_key_policy TEXT');
+  addColumnIfMissing('jump_known_hosts_path', 'jump_known_hosts_path TEXT');
 
   return db;
 };

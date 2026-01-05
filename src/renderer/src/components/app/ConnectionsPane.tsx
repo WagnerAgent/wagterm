@@ -17,6 +17,14 @@ type ConnectionForm = {
   password: string;
   hostKeyPolicy: 'strict' | 'accept-new';
   knownHostsPath: string;
+  jumpEnabled: boolean;
+  jumpHost: string;
+  jumpPort: number;
+  jumpUsername: string;
+  jumpCredentialId: string;
+  jumpAuthMethod: 'pem' | 'password';
+  jumpHostKeyPolicy: 'strict' | 'accept-new';
+  jumpKnownHostsPath: string;
 };
 
 type ConnectionsPaneProps = {
@@ -207,6 +215,146 @@ const ConnectionsPane = ({
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="jumpEnabled">Jump Host (optional)</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="jumpEnabled"
+                      type="checkbox"
+                      checked={connectionForm.jumpEnabled}
+                      onChange={(event) =>
+                        setConnectionForm((prev) => ({
+                          ...prev,
+                          jumpEnabled: event.target.checked
+                        }))
+                      }
+                      className="h-4 w-4 accent-primary"
+                    />
+                    <span className="text-sm text-muted-foreground">Connect via a bastion host</span>
+                  </div>
+                </div>
+
+                {connectionForm.jumpEnabled && (
+                  <div className="space-y-4 rounded-md border border-border p-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="jumpHost">Jump Host</Label>
+                      <Input
+                        id="jumpHost"
+                        placeholder="bastion.example.com"
+                        value={connectionForm.jumpHost}
+                        onChange={(event) =>
+                          setConnectionForm((prev) => ({ ...prev, jumpHost: event.target.value }))
+                        }
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="jumpUsername">Jump Username</Label>
+                        <Input
+                          id="jumpUsername"
+                          placeholder="ubuntu"
+                          value={connectionForm.jumpUsername}
+                          onChange={(event) =>
+                            setConnectionForm((prev) => ({ ...prev, jumpUsername: event.target.value }))
+                          }
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="jumpPort">Jump Port</Label>
+                        <Input
+                          id="jumpPort"
+                          type="number"
+                          value={connectionForm.jumpPort}
+                          onChange={(event) =>
+                            setConnectionForm((prev) => ({ ...prev, jumpPort: Number(event.target.value) }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="jumpAuthMethod">Jump Auth Method</Label>
+                      <select
+                        id="jumpAuthMethod"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={connectionForm.jumpAuthMethod}
+                        onChange={(event) =>
+                          setConnectionForm((prev) => ({
+                            ...prev,
+                            jumpAuthMethod: event.target.value as 'pem' | 'password',
+                            jumpCredentialId: event.target.value === 'password' ? '' : prev.jumpCredentialId
+                          }))
+                        }
+                      >
+                        <option value="pem">SSH Key</option>
+                        <option value="password" disabled>
+                          Password (coming soon)
+                        </option>
+                      </select>
+                    </div>
+
+                    {connectionForm.jumpAuthMethod === 'pem' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="jumpCredentialId">Jump SSH Key</Label>
+                        <select
+                          id="jumpCredentialId"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          value={connectionForm.jumpCredentialId}
+                          onChange={(event) => {
+                            const nextId = event.target.value;
+                            setConnectionForm((prev) => ({
+                              ...prev,
+                              jumpCredentialId: nextId
+                            }));
+                          }}
+                        >
+                          <option value="">Select a key</option>
+                          {keys.map((key) => (
+                            <option key={key.id} value={key.id}>
+                              {key.name} ({key.type.toUpperCase()})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="jumpHostKeyPolicy">Jump Host Key Policy</Label>
+                      <select
+                        id="jumpHostKeyPolicy"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={connectionForm.jumpHostKeyPolicy}
+                        onChange={(event) =>
+                          setConnectionForm((prev) => ({
+                            ...prev,
+                            jumpHostKeyPolicy: event.target.value as 'strict' | 'accept-new'
+                          }))
+                        }
+                      >
+                        <option value="strict">Strict</option>
+                        <option value="accept-new">Accept New</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="jumpKnownHostsPath">Jump Known Hosts Path (optional)</Label>
+                      <Input
+                        id="jumpKnownHostsPath"
+                        placeholder="/Users/you/.ssh/known_hosts"
+                        value={connectionForm.jumpKnownHostsPath}
+                        onChange={(event) =>
+                          setConnectionForm((prev) => ({
+                            ...prev,
+                            jumpKnownHostsPath: event.target.value
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {connectionError && <p className="text-sm text-destructive">{connectionError}</p>}
               </div>
 
@@ -271,7 +419,15 @@ const ConnectionsPane = ({
                         authMethod: profile.authMethod,
                         password: '',
                         hostKeyPolicy: profile.hostKeyPolicy ?? 'strict',
-                        knownHostsPath: profile.knownHostsPath ?? ''
+                        knownHostsPath: profile.knownHostsPath ?? '',
+                        jumpEnabled: Boolean(profile.jumpHost),
+                        jumpHost: profile.jumpHost?.host ?? '',
+                        jumpPort: profile.jumpHost?.port ?? 22,
+                        jumpUsername: profile.jumpHost?.username ?? '',
+                        jumpCredentialId: profile.jumpHost?.credentialId ?? '',
+                        jumpAuthMethod: profile.jumpHost?.authMethod ?? 'pem',
+                        jumpHostKeyPolicy: profile.jumpHost?.hostKeyPolicy ?? 'strict',
+                        jumpKnownHostsPath: profile.jumpHost?.knownHostsPath ?? ''
                       });
                       setConnectionSheetOpen(true);
                     }}
