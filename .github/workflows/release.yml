@@ -30,6 +30,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Sync app version with tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: npm version --no-git-tag-version "${GITHUB_REF_NAME#v}"
+
       - name: Build app
         run: npm run build
 
