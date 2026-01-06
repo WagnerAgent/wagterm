@@ -1,4 +1,4 @@
-export type SectionKey = 'connections' | 'keys' | 'settings';
+export type SectionKey = 'connections' | 'keys' | 'settings' | 'dithering-demo';
 
 export type ConnectionProfile = {
   id: string;
@@ -37,6 +37,14 @@ export type TerminalSession = {
   profile: ConnectionProfile;
   status: string;
   connected: boolean;
+};
+
+export type CommandHistoryEntry = {
+  id: string;
+  connectionId: string;
+  sessionId: string;
+  command: string;
+  createdAt: string;
 };
 
 export type CommandProposal = {

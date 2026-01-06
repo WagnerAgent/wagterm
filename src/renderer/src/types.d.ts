@@ -21,6 +21,15 @@ declare global {
             credentialId?: string;
             hostKeyPolicy?: 'strict' | 'accept-new';
             knownHostsPath?: string;
+            jumpHost?: {
+              host: string;
+              port: number;
+              username: string;
+              authMethod: 'pem' | 'password';
+              credentialId?: string;
+              hostKeyPolicy?: 'strict' | 'accept-new';
+              knownHostsPath?: string;
+            };
           }>;
         }>;
         addConnection: (request: {
@@ -34,6 +43,15 @@ declare global {
             credentialId?: string;
             hostKeyPolicy?: 'strict' | 'accept-new';
             knownHostsPath?: string;
+            jumpHost?: {
+              host: string;
+              port: number;
+              username: string;
+              authMethod: 'pem' | 'password';
+              credentialId?: string;
+              hostKeyPolicy?: 'strict' | 'accept-new';
+              knownHostsPath?: string;
+            };
           };
           password?: string;
         }) => Promise<{ profile: { id: string } }>;
@@ -48,6 +66,15 @@ declare global {
             credentialId?: string;
             hostKeyPolicy?: 'strict' | 'accept-new';
             knownHostsPath?: string;
+            jumpHost?: {
+              host: string;
+              port: number;
+              username: string;
+              authMethod: 'pem' | 'password';
+              credentialId?: string;
+              hostKeyPolicy?: 'strict' | 'accept-new';
+              knownHostsPath?: string;
+            };
           };
           password?: string;
         }) => Promise<{ profile: { id: string } }>;
@@ -88,6 +115,15 @@ declare global {
           clearPassphrase?: boolean;
         }) => Promise<{ key: { id: string } }>;
         importPem: (request: { fileName: string; data: number[] }) => Promise<{ path: string }>;
+        listCommandHistory: (request: { connectionId: string; limit?: number }) => Promise<{
+          entries: Array<{
+            id: string;
+            connectionId: string;
+            sessionId: string;
+            command: string;
+            createdAt: string;
+          }>;
+        }>;
       };
       ssh: {
         listMcpServers: () => Promise<{ servers: Array<{ id: string }> }>;
@@ -104,6 +140,15 @@ declare global {
             credentialId?: string;
             hostKeyPolicy?: 'strict' | 'accept-new';
             knownHostsPath?: string;
+            jumpHost?: {
+              host: string;
+              port: number;
+              username: string;
+              authMethod: 'pem' | 'password';
+              credentialId?: string;
+              hostKeyPolicy?: 'strict' | 'accept-new';
+              knownHostsPath?: string;
+            };
           };
           cols: number;
           rows: number;
@@ -120,6 +165,14 @@ declare global {
         onData: (listener: (event: { sessionId: string; data: string }) => void) => () => void;
         onExit: (
           listener: (event: { sessionId: string; exitCode: number | null; signal?: number }) => void
+        ) => () => void;
+        onCommand: (
+          listener: (event: {
+            sessionId: string;
+            connectionId: string;
+            command: string;
+            createdAt: string;
+          }) => void
         ) => () => void;
       };
       assistant: {

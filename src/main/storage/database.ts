@@ -46,6 +46,14 @@ export const initializeDatabase = (dbPath: string): Database.Database => {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS command_history (
+      id TEXT PRIMARY KEY,
+      connection_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      command TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `);
 
   const connectionColumns = db

@@ -6,6 +6,7 @@ import type {
   AddConnectionResponse,
   AddKeyRequest,
   AddKeyResponse,
+  CommandHistoryEntry,
   ConnectionProfile,
   DeleteConnectionRequest,
   DeleteConnectionResponse,
@@ -13,6 +14,8 @@ import type {
   DeleteKeyResponse,
   KeyRecord,
   ListConnectionProfilesResponse,
+  ListCommandHistoryRequest,
+  ListCommandHistoryResponse,
   ListKeysResponse,
   UpdateConnectionRequest,
   UpdateConnectionResponse,
@@ -414,6 +417,40 @@ export class StorageService {
     });
 
     return { profiles } as ListConnectionProfilesResponse;
+  }
+
+  addCommandHistory(entry: CommandHistoryEntry): void {
+    const statement = this.db.prepare(`
+      INSERT INTO command_history (id, connection_id, session_id, command, created_at)
+      VALUES (@id, @connectionId, @sessionId, @command, @createdAt)
+    `);
+
+    statement.run({
+      id: entry.id,
+      connectionId: entry.connectionId,
+      sessionId: entry.sessionId,
+      command: entry.command,
+      createdAt: entry.createdAt
+    });
+  }
+
+  listCommandHistory(request: ListCommandHistoryRequest): ListCommandHistoryResponse {
+    const limit = request.limit ?? 200;
+    const rows = this.db
+      .prepare(
+        `SELECT id,
+                connection_id as connectionId,
+                session_id as sessionId,
+                command,
+                created_at as createdAt
+         FROM command_history
+         WHERE connection_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(request.connectionId, limit);
+
+    return { entries: rows } as ListCommandHistoryResponse;
   }
 
   async addKey(request: AddKeyRequest): Promise<AddKeyResponse> {

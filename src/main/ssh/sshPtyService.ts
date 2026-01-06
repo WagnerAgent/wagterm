@@ -6,12 +6,15 @@ import keytar from 'keytar';
 import { mkdtemp, writeFile, rm } from 'fs/promises';
 import os from 'os';
 import { IpcChannels } from '../../shared/ipc';
+import type { StorageService } from '../storage/storageService';
 import type {
+  CommandHistoryEntry,
   ConnectionProfile,
   HostKeyPolicy,
   JumpHostConfig,
   SshAuthMethod,
   SshSessionCloseRequest,
+  SshSessionCommandEvent,
   SshSessionDataEvent,
   SshSessionExitEvent,
   SshSessionInputRequest,
@@ -26,6 +29,7 @@ type SessionRecord = {
   id: string;
   profile: ConnectionProfile;
   pty: ReturnType<typeof spawn>;
+  sender: WebContents;
   tempKeyPath?: string;
   tempJumpKeyPath?: string;
 };
@@ -230,9 +234,12 @@ const isLocalKnownHostsPath = (pathValue?: string): boolean => {
 const isPemAuth = (authMethod: SshAuthMethod): boolean => authMethod === 'pem';
 
 export class SshPtyService {
+  private readonly inputBuffers = new Map<string, string>();
   private readonly sessions = new Map<string, SessionRecord>();
   private readonly outputBuffers = new Map<string, OutputBuffer>();
   private readonly serviceName = 'wagterm';
+
+  constructor(private readonly storageService?: StorageService) {}
 
   async startSession(
     request: SshSessionStartRequest,
@@ -286,12 +293,14 @@ export class SshPtyService {
       id: sessionId,
       profile: request.profile,
       pty,
+      sender,
       tempKeyPath,
       tempJumpKeyPath
     };
 
     this.sessions.set(sessionId, record);
     this.outputBuffers.set(sessionId, new OutputBuffer(OUTPUT_BUFFER_LIMIT));
+    this.inputBuffers.set(sessionId, '');
 
     pty.onData((data) => {
       const buffer = this.outputBuffers.get(sessionId);
@@ -305,6 +314,7 @@ export class SshPtyService {
       sender.send(IpcChannels.sshSessionExit, payload);
       this.sessions.delete(sessionId);
       this.outputBuffers.delete(sessionId);
+      this.inputBuffers.delete(sessionId);
       void this.cleanupTempKey(tempKeyPath);
       void this.cleanupTempKey(tempJumpKeyPath);
     });
@@ -319,6 +329,15 @@ export class SshPtyService {
     }
 
     record.pty.write(request.data);
+
+    const buffer = this.inputBuffers.get(request.sessionId) ?? '';
+    const combined = `${buffer}${request.data}`;
+    const parts = combined.split(/\r\n|\r|\n/);
+    const remainder = parts.pop() ?? '';
+    for (const part of parts) {
+      this.recordCommand(request.sessionId, part);
+    }
+    this.inputBuffers.set(request.sessionId, remainder);
   }
 
   resize(request: SshSessionResizeRequest): void {
@@ -341,6 +360,7 @@ export class SshPtyService {
     void this.cleanupTempKey(record.tempJumpKeyPath);
     this.sessions.delete(request.sessionId);
     this.outputBuffers.delete(request.sessionId);
+    this.inputBuffers.delete(request.sessionId);
   }
 
   getRecentOutput(request: SshSessionOutputRequest): SshSessionOutputResponse {
@@ -410,5 +430,37 @@ export class SshPtyService {
     } catch {
       // Best-effort cleanup.
     }
+  }
+
+  private recordCommand(sessionId: string, rawCommand: string): void {
+    const cleaned = rawCommand.replace(/[\x00-\x1F\x7F]/g, '');
+    const trimmed = cleaned.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const record = this.sessions.get(sessionId);
+    if (!record) {
+      return;
+    }
+
+    const entry: CommandHistoryEntry = {
+      id: randomUUID(),
+      connectionId: record.profile.id,
+      sessionId,
+      command: trimmed,
+      createdAt: new Date().toISOString()
+    };
+
+    this.storageService?.addCommandHistory(entry);
+
+    const payload: SshSessionCommandEvent = {
+      sessionId,
+      connectionId: record.profile.id,
+      command: trimmed,
+      createdAt: entry.createdAt
+    };
+
+    record.sender.send(IpcChannels.sshSessionCommand, payload);
   }
 }

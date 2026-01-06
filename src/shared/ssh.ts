@@ -210,3 +210,27 @@ export type SshSessionExitEvent = {
   signal?: number;
   error?: string;
 };
+
+export type CommandHistoryEntry = {
+  id: string;
+  connectionId: string;
+  sessionId: string;
+  command: string;
+  createdAt: string;
+};
+
+export type SshSessionCommandEvent = {
+  sessionId: string;
+  connectionId: string;
+  command: string;
+  createdAt: string;
+};
+
+export type ListCommandHistoryRequest = {
+  connectionId: string;
+  limit?: number;
+};
+
+export type ListCommandHistoryResponse = {
+  entries: CommandHistoryEntry[];
+};
