@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ArrowRight, ChevronDown, Terminal as TerminalIcon } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowRight, ChevronDown, ChevronUp, Clock, MessageSquare, Search, Terminal as TerminalIcon } from 'lucide-react';
 import { Button } from '../ui/button';
-import type { CommandProposal, TerminalSession } from './types';
+import { Input } from '../ui/input';
+import type { CommandHistoryEntry, CommandProposal, TerminalSession } from './types';
 import type { AgentPlanStep } from '../../../shared/agent-ipc';
 import { useSettingsContext } from '../../context/SettingsContext';
 
@@ -173,6 +174,8 @@ const renderMarkdown = (text: string) => {
   });
 };
 
+type SidebarTab = 'chat' | 'search' | 'history';
+
 type AssistantPaneProps = {
   session: TerminalSession;
   conversationMessages: Map<
@@ -187,6 +190,8 @@ type AssistantPaneProps = {
   handleSendConversation: (options?: { maxSteps?: number }) => void;
   handleApproveCommand: (sessionId: string, proposalId: string) => void;
   handleRejectCommand: (sessionId: string, proposalId: string) => void;
+  findInTerminal: (sessionId: string, query: string, direction: 'next' | 'previous') => boolean;
+  commandHistory: CommandHistoryEntry[];
 };
 
 const AssistantPane = ({
@@ -199,7 +204,9 @@ const AssistantPane = ({
   setSelectedModel,
   handleSendConversation,
   handleApproveCommand,
-  handleRejectCommand
+  handleRejectCommand,
+  findInTerminal,
+  commandHistory
 }: AssistantPaneProps) => {
   const { settings } = useSettingsContext();
   const messages = conversationMessages.get(session.id) ?? [];
@@ -215,6 +222,29 @@ const AssistantPane = ({
   const autoApproveTouchedRef = useRef(false);
   const autoApprovedRef = useRef<Set<string>>(new Set());
   const selectedModelValue = selectedModel ?? settings.defaultModel;
+
+  // Sidebar tab state
+  const [activeTab, setActiveTab] = useState<SidebarTab>('chat');
+
+  // Terminal search state
+  const [terminalSearch, setTerminalSearch] = useState('');
+  const [searchStatus, setSearchStatus] = useState('');
+
+  // Command history state
+  const [historyQuery, setHistoryQuery] = useState('');
+
+  const filteredHistory = useMemo(() => {
+    const query = historyQuery.trim().toLowerCase();
+    if (!query) {
+      return commandHistory;
+    }
+    return commandHistory.filter((entry) => entry.command.toLowerCase().includes(query));
+  }, [commandHistory, historyQuery]);
+
+  const runSearch = (direction: 'next' | 'previous') => {
+    const found = findInTerminal(session.id, terminalSearch, direction);
+    setSearchStatus(found ? '' : 'No match');
+  };
 
   const shouldAutoApprove = (risk?: CommandProposal['risk']) => {
     if (!risk) {
@@ -309,89 +339,234 @@ const AssistantPane = ({
 
   return (
     <aside className="bg-card flex flex-col h-full">
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <div className="bg-muted/50 rounded-full p-4 mb-4">
-              <TerminalIcon className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <h4 className="text-sm font-semibold mb-2">Start a conversation</h4>
-            <p className="text-xs text-muted-foreground">
-              Ask me to help you with commands, explain what's happening, or generate scripts for your tasks.
-            </p>
-          </div>
-        ) : (
-          <>
-            {messages.map((msg, idx) => (
-              <div key={msg.id ?? idx} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                {msg.kind === 'proposal' && msg.proposal ? (
-                  <div className="rounded-lg border border-border bg-card p-3 space-y-2 max-w-[85%]">
-                    <div className="flex items-start justify-between gap-2">
-                      <code className="text-xs text-foreground font-mono break-all">{msg.proposal.command}</code>
-                      {msg.proposal.risk && (
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                            msg.proposal.risk === 'high'
-                              ? 'bg-red-500/20 text-red-200'
-                              : msg.proposal.risk === 'medium'
-                                ? 'bg-yellow-500/20 text-yellow-200'
-                                : 'bg-emerald-500/20 text-emerald-200'
-                          }`}
-                        >
-                          {msg.proposal.risk}
-                        </span>
-                      )}
-                    </div>
-
-                    {msg.proposal.rationale && <p className="text-xs text-muted-foreground">{msg.proposal.rationale}</p>}
-
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => handleApproveCommand(session.id, msg.proposal!.id)}
-                        disabled={msg.proposal.status !== 'pending'}
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleRejectCommand(session.id, msg.proposal!.id)}
-                        disabled={msg.proposal.status !== 'pending'}
-                      >
-                        Reject
-                      </Button>
-                      {msg.proposal.status !== 'pending' && (
-                        <span className="text-[11px] uppercase text-muted-foreground">{msg.proposal.status}</span>
-                      )}
-                    </div>
-
-                    {msg.proposal.statusMessage && (
-                      <div className="text-[11px] text-muted-foreground">{msg.proposal.statusMessage}</div>
-                    )}
-                  </div>
-                ) : (
-                  <div
-                    className={`rounded-lg px-4 py-2 max-w-[85%] ${
-                      msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
-                    }`}
-                  >
-                    {msg.role === 'assistant' && msg.content ? (
-                      <div className="space-y-2">{renderMarkdown(msg.content)}</div>
-                    ) : (
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-            <div ref={scrollEndRef} />
-          </>
-        )}
+      {/* Tab Bar */}
+      <div className="p-3 border-b border-border">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab('chat')}
+            className={`p-2.5 rounded-lg transition-colors ${
+              activeTab === 'chat'
+                ? 'bg-foreground text-background'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+            }`}
+            title="Chat"
+          >
+            <MessageSquare className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('search')}
+            className={`p-2.5 rounded-lg transition-colors ${
+              activeTab === 'search'
+                ? 'bg-foreground text-background'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+            }`}
+            title="Terminal Search"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            className={`p-2.5 rounded-lg transition-colors ${
+              activeTab === 'history'
+                ? 'bg-foreground text-background'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+            }`}
+            title="Command History"
+          >
+            <Clock className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
-      <div className="p-4 border-t border-border">
-        {settings.showPlanPanel && planSteps.length > 0 && (
+      {/* Tab Content */}
+      {activeTab === 'chat' && (
+        <>
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center px-4">
+                <div className="bg-muted/50 rounded-full p-4 mb-4">
+                  <TerminalIcon className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h4 className="text-sm font-semibold mb-2">Start a conversation</h4>
+                <p className="text-xs text-muted-foreground">
+                  Ask me to help you with commands, explain what's happening, or generate scripts for your tasks.
+                </p>
+              </div>
+            ) : (
+              <>
+                {messages.map((msg, idx) => (
+                  <div key={msg.id ?? idx} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {msg.kind === 'proposal' && msg.proposal ? (
+                      <div className="rounded-lg border border-border bg-card p-3 space-y-2 max-w-[85%]">
+                        <div className="flex items-start justify-between gap-2">
+                          <code className="text-xs text-foreground font-mono break-all">{msg.proposal.command}</code>
+                          {msg.proposal.risk && (
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                                msg.proposal.risk === 'high'
+                                  ? 'bg-red-500/20 text-red-200'
+                                  : msg.proposal.risk === 'medium'
+                                    ? 'bg-yellow-500/20 text-yellow-200'
+                                    : 'bg-emerald-500/20 text-emerald-200'
+                              }`}
+                            >
+                              {msg.proposal.risk}
+                            </span>
+                          )}
+                        </div>
+
+                        {msg.proposal.rationale && <p className="text-xs text-muted-foreground">{msg.proposal.rationale}</p>}
+
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleApproveCommand(session.id, msg.proposal!.id)}
+                            disabled={msg.proposal.status !== 'pending'}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRejectCommand(session.id, msg.proposal!.id)}
+                            disabled={msg.proposal.status !== 'pending'}
+                          >
+                            Reject
+                          </Button>
+                          {msg.proposal.status !== 'pending' && (
+                            <span className="text-[11px] uppercase text-muted-foreground">{msg.proposal.status}</span>
+                          )}
+                        </div>
+
+                        {msg.proposal.statusMessage && (
+                          <div className="text-[11px] text-muted-foreground">{msg.proposal.statusMessage}</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div
+                        className={`rounded-lg px-4 py-2 max-w-[85%] ${
+                          msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
+                        }`}
+                      >
+                        {msg.role === 'assistant' && msg.content ? (
+                          <div className="space-y-2">{renderMarkdown(msg.content)}</div>
+                        ) : (
+                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div ref={scrollEndRef} />
+              </>
+            )}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'search' && (
+        <div className="flex-1 flex flex-col p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={terminalSearch}
+                onChange={(event) => {
+                  setTerminalSearch(event.target.value);
+                  setSearchStatus('');
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    runSearch(event.shiftKey ? 'previous' : 'next');
+                  }
+                }}
+                placeholder="Search terminal"
+                className="h-9 text-sm pl-9"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => runSearch('previous')}
+                disabled={!terminalSearch.trim()}
+                className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Previous match"
+              >
+                <ChevronUp className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => runSearch('next')}
+                disabled={!terminalSearch.trim()}
+                className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Next match"
+              >
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          {searchStatus && (
+            <p className="text-xs text-muted-foreground">{searchStatus}</p>
+          )}
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-4">
+            <div className="bg-muted/50 rounded-full p-4 mb-4">
+              <Search className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h4 className="text-sm font-semibold mb-2">Search Terminal</h4>
+            <p className="text-xs text-muted-foreground">
+              Find text in your terminal output. Press Enter or use the arrows to navigate matches.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'history' && (
+        <div className="flex-1 flex flex-col p-4 space-y-4 overflow-hidden">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={historyQuery}
+              onChange={(event) => setHistoryQuery(event.target.value)}
+              placeholder="Search history"
+              className="h-9 text-sm pl-9"
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-1">
+            {filteredHistory.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center px-4">
+                <div className="bg-muted/50 rounded-full p-4 mb-4">
+                  <Clock className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h4 className="text-sm font-semibold mb-2">No commands yet</h4>
+                <p className="text-xs text-muted-foreground">
+                  Commands you run in the terminal will appear here.
+                </p>
+              </div>
+            ) : (
+              filteredHistory.slice(0, 100).map((entry) => (
+                <div
+                  key={entry.id}
+                  className="flex items-start justify-between gap-2 p-2 rounded-md hover:bg-muted/40 transition-colors"
+                >
+                  <code className="text-xs text-foreground font-mono break-all flex-1">{entry.command}</code>
+                  <span className="text-[10px] text-muted-foreground shrink-0">
+                    {new Date(entry.createdAt).toLocaleTimeString()}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Chat input area - only show when chat tab is active */}
+      {activeTab === 'chat' && (
+        <div className="p-4 border-t border-border">
+          {settings.showPlanPanel && planSteps.length > 0 && (
           <div className="rounded-lg border border-border bg-card p-3 mb-3 space-y-2">
             <button
               type="button"
@@ -588,7 +763,8 @@ const AssistantPane = ({
             </Button>
           </div>
         </div>
-      </div>
+        </div>
+      )}
     </aside>
   );
 };

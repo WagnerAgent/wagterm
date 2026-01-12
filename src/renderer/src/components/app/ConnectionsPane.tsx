@@ -383,72 +383,89 @@ const ConnectionsPane = ({
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {connections.map((profile) => (
-              <Card key={profile.id} className="hover:border-primary/50 transition-colors">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span className="truncate">{profile.name}</span>
-                    <div
-                      className={`h-2 w-2 rounded-full ${
-                        terminalSessions.some((session) => session.profile.id === profile.id && session.connected)
-                          ? 'bg-green-500'
-                          : 'bg-muted-foreground/30'
-                      }`}
-                    />
-                  </CardTitle>
-                  <CardDescription className="font-mono text-xs">
-                    {profile.username}@{profile.host}:{profile.port}
-                  </CardDescription>
-                </CardHeader>
-                <CardFooter className="gap-2">
-                  <Button size="sm" onClick={() => connectToProfile(profile)} className="flex-1">
-                    <TerminalIcon className="h-3 w-3 mr-1" />
-                    Connect
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setEditingConnectionId(profile.id);
-                      setConnectionForm({
-                        name: profile.name,
-                        host: profile.host,
-                        username: profile.username,
-                        port: profile.port,
-                        credentialId: profile.credentialId ?? '',
-                        authMethod: profile.authMethod,
-                        password: '',
-                        hostKeyPolicy: profile.hostKeyPolicy ?? 'strict',
-                        knownHostsPath: profile.knownHostsPath ?? '',
-                        jumpEnabled: Boolean(profile.jumpHost),
-                        jumpHost: profile.jumpHost?.host ?? '',
-                        jumpPort: profile.jumpHost?.port ?? 22,
-                        jumpUsername: profile.jumpHost?.username ?? '',
-                        jumpCredentialId: profile.jumpHost?.credentialId ?? '',
-                        jumpAuthMethod: profile.jumpHost?.authMethod ?? 'pem',
-                        jumpHostKeyPolicy: profile.jumpHost?.hostKeyPolicy ?? 'strict',
-                        jumpKnownHostsPath: profile.jumpHost?.knownHostsPath ?? ''
-                      });
-                      setConnectionSheetOpen(true);
-                    }}
-                  >
-                    <Edit2 className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      if (window.confirm('Delete this connection?')) {
-                        await window.wagterm.storage.deleteConnection({ id: profile.id });
-                        await loadConnections();
-                      }
-                    }}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
+            {connections.map((profile) => {
+              const isDemo = profile.id.startsWith('demo-');
+              return (
+                <Card key={profile.id} className="hover:border-primary/50 transition-colors">
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between gap-3">
+                      <span className="truncate">{profile.name}</span>
+                      <div className="flex items-center gap-2">
+                        {isDemo && (
+                          <span className="text-xs font-medium text-muted-foreground">Sample</span>
+                        )}
+                        <div
+                          className={`h-2 w-2 rounded-full ${
+                            terminalSessions.some(
+                              (session) => session.profile.id === profile.id && session.connected
+                            )
+                              ? 'bg-green-500'
+                              : 'bg-muted-foreground/30'
+                          }`}
+                        />
+                      </div>
+                    </CardTitle>
+                    <CardDescription className="font-mono text-xs">
+                      {profile.username}@{profile.host}:{profile.port}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardFooter className="gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => connectToProfile(profile)}
+                      className="flex-1"
+                      disabled={isDemo}
+                    >
+                      <TerminalIcon className="h-3 w-3 mr-1" />
+                      Connect
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={isDemo}
+                      onClick={() => {
+                        setEditingConnectionId(profile.id);
+                        setConnectionForm({
+                          name: profile.name,
+                          host: profile.host,
+                          username: profile.username,
+                          port: profile.port,
+                          credentialId: profile.credentialId ?? '',
+                          authMethod: profile.authMethod,
+                          password: '',
+                          hostKeyPolicy: profile.hostKeyPolicy ?? 'strict',
+                          knownHostsPath: profile.knownHostsPath ?? '',
+                          jumpEnabled: Boolean(profile.jumpHost),
+                          jumpHost: profile.jumpHost?.host ?? '',
+                          jumpPort: profile.jumpHost?.port ?? 22,
+                          jumpUsername: profile.jumpHost?.username ?? '',
+                          jumpCredentialId: profile.jumpHost?.credentialId ?? '',
+                          jumpAuthMethod: profile.jumpHost?.authMethod ?? 'pem',
+                          jumpHostKeyPolicy: profile.jumpHost?.hostKeyPolicy ?? 'strict',
+                          jumpKnownHostsPath: profile.jumpHost?.knownHostsPath ?? ''
+                        });
+                        setConnectionSheetOpen(true);
+                      }}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={isDemo}
+                      onClick={async () => {
+                        if (window.confirm('Delete this connection?')) {
+                          await window.wagterm.storage.deleteConnection({ id: profile.id });
+                          await loadConnections();
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </CardFooter>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
