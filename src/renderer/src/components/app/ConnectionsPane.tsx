@@ -405,9 +405,10 @@ const ConnectionsPane = ({
                         />
                       </div>
                     </CardTitle>
-                    <CardDescription className="font-mono text-xs">
+                  
+                    {/*<CardDescription className="font-mono text-xs">
                       {profile.username}@{profile.host}:{profile.port}
-                    </CardDescription>
+                    </CardDescription>*/}
                   </CardHeader>
                   <CardFooter className="gap-2">
                     <Button

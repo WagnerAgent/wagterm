@@ -257,8 +257,8 @@ export class AssistantService {
       streamAssistant: (sessionId, prompt, model, outputLimit, onChunk) =>
         this.streamAssistantRaw(sessionId, prompt, model, outputLimit, onChunk),
       parseAssistant: (rawText) => this.parseAssistant(rawText),
-      executeCommand: (sessionId, command) =>
-        this.sshPtyService.sendInput({ sessionId, data: `${command}\n` }),
+      executeCommand: (sessionId, command, toolCallId) =>
+        this.sshPtyService.executeCommandAndWait(sessionId, command, toolCallId),
       emitEvent: (event) => this.sendAgentEvent(event)
     });
   }

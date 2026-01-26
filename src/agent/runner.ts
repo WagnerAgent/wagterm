@@ -28,7 +28,11 @@ type AgentRunnerDeps = {
     onChunk: (text: string) => void
   ) => Promise<string>;
   parseAssistant: (rawText: string) => { response: AiCommandResponse; messageText?: string };
-  executeCommand: (sessionId: string, command: string) => void;
+  executeCommand: (
+    sessionId: string,
+    command: string,
+    toolCallId: string
+  ) => Promise<{ output: string; exitCode: number }>;
   emitEvent: (event: AgentEvent) => void;
 };
 
@@ -45,7 +49,7 @@ export class AgentRunner {
       return;
     }
     if (action.kind === 'approve_tool') {
-      this.handleApproveTool(action);
+      void this.handleApproveTool(action);
       return;
     }
     if (action.kind === 'reject_tool') {
@@ -208,7 +212,7 @@ export class AgentRunner {
     return { ...response, commands };
   }
 
-  private handleApproveTool(action: Extract<AgentAction, { kind: 'approve_tool' }>) {
+  private async handleApproveTool(action: Extract<AgentAction, { kind: 'approve_tool' }>) {
     const proposals = this.proposalsBySession.get(action.sessionId);
     const proposal = proposals?.get(action.toolCallId);
 
@@ -229,8 +233,9 @@ export class AgentRunner {
 
     try {
       this.setPlanStepStatus(action.sessionId, action.toolCallId, 'in_progress');
-      this.deps.executeCommand(action.sessionId, proposal.command);
-      this.updateState(action.sessionId, 'observe', 'Command executed.');
+      this.updateState(action.sessionId, 'observe', 'Command running.');
+      const result = await this.deps.executeCommand(action.sessionId, proposal.command, action.toolCallId);
+      const formattedOutput = this.formatCommandOutput(result.output);
       this.deps.emitEvent({
         version: 1,
         kind: 'tool_result',
@@ -239,7 +244,7 @@ export class AgentRunner {
         result: {
           toolCallId: action.toolCallId,
           status: 'success',
-          output: `Executed: ${proposal.command}`
+          output: this.formatToolResult(proposal.command, result.exitCode, formattedOutput)
         }
       });
       this.setPlanStepStatus(action.sessionId, action.toolCallId, 'done');
@@ -247,7 +252,10 @@ export class AgentRunner {
       if (session) {
         session.step += 1;
         this.updateState(action.sessionId, 'reflect', 'Evaluating command output.');
-        void this.runStep(session, `Command executed: ${proposal.command}`);
+        const note = formattedOutput
+          ? `Command completed: ${proposal.command}\nExit code: ${result.exitCode}\nOutput:\n${formattedOutput}`
+          : `Command completed: ${proposal.command}\nExit code: ${result.exitCode}`;
+        void this.runStep(session, note);
       }
     } catch (error) {
       this.setPlanStepStatus(action.sessionId, action.toolCallId, 'blocked');
@@ -309,5 +317,24 @@ export class AgentRunner {
       planId: `plan-${sessionId}`,
       steps
     });
+  }
+
+  private formatCommandOutput(output: string, maxChars = 4000): string {
+    const trimmed = output.trim();
+    if (!trimmed) {
+      return '';
+    }
+    if (trimmed.length <= maxChars) {
+      return trimmed;
+    }
+    return `${trimmed.slice(0, maxChars)}\n... (truncated)`;
+  }
+
+  private formatToolResult(command: string, exitCode: number, output: string): string {
+    const lines = [`Completed: ${command}`, `Exit code: ${exitCode}`];
+    if (output) {
+      lines.push('Output:', output);
+    }
+    return lines.join('\n');
   }
 }

@@ -34,6 +34,17 @@ type SessionRecord = {
   tempJumpKeyPath?: string;
 };
 
+type CommandWaiter = {
+  startMarker: string;
+  endMarkerPrefix: string;
+  output: string;
+  started: boolean;
+  exitCode?: number;
+  resolve: (result: { output: string; exitCode: number }) => void;
+  reject: (error: Error) => void;
+  timeout?: NodeJS.Timeout;
+};
+
 const OUTPUT_BUFFER_LIMIT = 20000;
 
 const redactOutput = (value: string): string => {
@@ -237,6 +248,8 @@ export class SshPtyService {
   private readonly inputBuffers = new Map<string, string>();
   private readonly sessions = new Map<string, SessionRecord>();
   private readonly outputBuffers = new Map<string, OutputBuffer>();
+  private readonly commandWaiters = new Map<string, CommandWaiter>();
+  private readonly outputRemainders = new Map<string, string>();
   private readonly serviceName = 'wagterm';
 
   constructor(private readonly storageService?: StorageService) {}
@@ -303,18 +316,24 @@ export class SshPtyService {
     this.inputBuffers.set(sessionId, '');
 
     pty.onData((data) => {
+      const filtered = this.filterCommandMarkers(sessionId, data);
+      if (!filtered) {
+        return;
+      }
       const buffer = this.outputBuffers.get(sessionId);
-      buffer?.append(data);
-      const payload: SshSessionDataEvent = { sessionId, data };
+      buffer?.append(filtered);
+      const payload: SshSessionDataEvent = { sessionId, data: filtered };
       sender.send(IpcChannels.sshSessionData, payload);
     });
 
     pty.onExit(({ exitCode, signal }) => {
       const payload: SshSessionExitEvent = { sessionId, exitCode, signal };
       sender.send(IpcChannels.sshSessionExit, payload);
+      this.rejectWaiters(sessionId, new Error('SSH session closed.'));
       this.sessions.delete(sessionId);
       this.outputBuffers.delete(sessionId);
       this.inputBuffers.delete(sessionId);
+      this.outputRemainders.delete(sessionId);
       void this.cleanupTempKey(tempKeyPath);
       void this.cleanupTempKey(tempJumpKeyPath);
     });
@@ -340,6 +359,28 @@ export class SshPtyService {
     this.inputBuffers.set(request.sessionId, remainder);
   }
 
+  async executeCommandAndWait(
+    sessionId: string,
+    command: string,
+    toolCallId: string
+  ): Promise<{ output: string; exitCode: number }> {
+    const record = this.sessions.get(sessionId);
+    if (!record) {
+      throw new Error('SSH session not found.');
+    }
+
+    const startMarker = `__WAGTERM_START_${toolCallId}__`;
+    const endMarkerPrefix = `__WAGTERM_END_${toolCallId}__:`;
+    const waiter = this.registerWaiter(sessionId, startMarker, endMarkerPrefix);
+
+    this.recordCommand(sessionId, command);
+
+    const wrapped = `printf '\\n${startMarker}\\n'; ${command}; status=$?; printf '\\n${endMarkerPrefix}%s\\n' "$status"`;
+    record.pty.write(`${wrapped}\n`);
+
+    return await waiter;
+  }
+
   resize(request: SshSessionResizeRequest): void {
     const record = this.sessions.get(request.sessionId);
     if (!record) {
@@ -358,9 +399,11 @@ export class SshPtyService {
     record.pty.kill();
     void this.cleanupTempKey(record.tempKeyPath);
     void this.cleanupTempKey(record.tempJumpKeyPath);
+    this.rejectWaiters(request.sessionId, new Error('SSH session closed.'));
     this.sessions.delete(request.sessionId);
     this.outputBuffers.delete(request.sessionId);
     this.inputBuffers.delete(request.sessionId);
+    this.outputRemainders.delete(request.sessionId);
   }
 
   getRecentOutput(request: SshSessionOutputRequest): SshSessionOutputResponse {
@@ -462,5 +505,143 @@ export class SshPtyService {
     };
 
     record.sender.send(IpcChannels.sshSessionCommand, payload);
+  }
+
+  private registerWaiter(
+    sessionId: string,
+    startMarker: string,
+    endMarkerPrefix: string,
+    timeoutMs = 120000
+  ): Promise<{ output: string; exitCode: number }> {
+    return new Promise((resolve, reject) => {
+      if (this.commandWaiters.has(sessionId)) {
+        reject(new Error('Another command is already running.'));
+        return;
+      }
+
+      const waiter: CommandWaiter = {
+        startMarker,
+        endMarkerPrefix,
+        output: '',
+        started: false,
+        resolve,
+        reject
+      };
+      waiter.timeout = setTimeout(() => {
+        this.commandWaiters.delete(sessionId);
+        reject(new Error('Command timed out waiting for completion.'));
+      }, timeoutMs);
+
+      this.commandWaiters.set(sessionId, waiter);
+    });
+  }
+
+  private rejectWaiters(sessionId: string, error: Error): void {
+    const waiter = this.commandWaiters.get(sessionId);
+    if (!waiter) {
+      return;
+    }
+    if (waiter.timeout) {
+      clearTimeout(waiter.timeout);
+    }
+    waiter.reject(error);
+    this.commandWaiters.delete(sessionId);
+  }
+
+  private filterCommandMarkers(sessionId: string, chunk: string): string {
+    const remainder = this.outputRemainders.get(sessionId) ?? '';
+    let combined = remainder + chunk;
+    const waiter = this.commandWaiters.get(sessionId);
+    if (!waiter) {
+      if (remainder) {
+        this.outputRemainders.delete(sessionId);
+      }
+      return combined;
+    }
+
+    const tailLength = Math.max(0, Math.max(waiter.startMarker.length, waiter.endMarkerPrefix.length + 10) - 1);
+    const processable =
+      combined.length > tailLength ? combined.slice(0, combined.length - tailLength) : '';
+    const nextRemainder = combined.length > tailLength ? combined.slice(-tailLength) : combined;
+
+    let filtered = '';
+    let index = 0;
+    const startMarker = waiter.startMarker;
+    const endMarkerPrefix = waiter.endMarkerPrefix;
+    let waiterActive = true;
+
+    while (index < processable.length) {
+      const nextStart = processable.indexOf(startMarker, index);
+      const nextEnd = processable.indexOf(endMarkerPrefix, index);
+
+      let nextMarker = -1;
+      let markerType: 'start' | 'end' | null = null;
+
+      if (nextStart !== -1 && (nextEnd === -1 || nextStart < nextEnd)) {
+        nextMarker = nextStart;
+        markerType = 'start';
+      } else if (nextEnd !== -1) {
+        nextMarker = nextEnd;
+        markerType = 'end';
+      }
+
+      if (nextMarker === -1 || !markerType) {
+        const segment = processable.slice(index);
+        filtered += segment;
+        if (waiterActive && waiter.started) {
+          waiter.output += segment;
+        }
+        break;
+      }
+
+      const segment = processable.slice(index, nextMarker);
+      filtered += segment;
+      if (waiterActive && waiter.started) {
+        waiter.output += segment;
+      }
+
+      index = nextMarker;
+
+      if (markerType === 'start') {
+        if (waiterActive) {
+          waiter.started = true;
+        }
+        index += startMarker.length;
+        if (processable.startsWith('\r\n', index)) {
+          index += 2;
+        } else if (processable[index] === '\n' || processable[index] === '\r') {
+          index += 1;
+        }
+        continue;
+      }
+
+      index += endMarkerPrefix.length;
+      const codeMatch = processable.slice(index).match(/^(\d+)/);
+      if (codeMatch) {
+        waiter.exitCode = Number.parseInt(codeMatch[1], 10);
+        index += codeMatch[1].length;
+      }
+      if (processable.startsWith('\r\n', index)) {
+        index += 2;
+      } else if (processable[index] === '\n' || processable[index] === '\r') {
+        index += 1;
+      }
+
+      if (waiter.timeout) {
+        clearTimeout(waiter.timeout);
+      }
+      this.commandWaiters.delete(sessionId);
+      const output = waiter.output.replace(/\s+$/, '');
+      waiter.resolve({ output, exitCode: waiter.exitCode ?? 0 });
+      waiter.started = false;
+      waiterActive = false;
+    }
+
+    if (this.commandWaiters.has(sessionId)) {
+      this.outputRemainders.set(sessionId, nextRemainder);
+    } else {
+      this.outputRemainders.delete(sessionId);
+    }
+    return filtered;
   }
 }
