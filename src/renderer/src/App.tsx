@@ -44,6 +44,7 @@ const App = () => {
     setSelectedModelBySession,
     handleSendConversation,
     handleApproveCommand,
+    handleConfirmCommand,
     handleRejectCommand,
     registerSession,
     unregisterSession
@@ -221,6 +222,7 @@ const App = () => {
                   }
                   handleSendConversation={handleSendConversation}
                   handleApproveCommand={handleApproveCommand}
+                  handleConfirmCommand={handleConfirmCommand}
                   handleRejectCommand={handleRejectCommand}
                   findInTerminal={findInTerminal}
                   commandHistory={commandHistoryByConnection.get(session.profile.id) ?? []}

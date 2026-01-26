@@ -9,6 +9,9 @@ type AgentSessionState = {
   step: number;
   model: AiModel;
   maxSteps: number;
+  planCursor: number;
+  lastCommand?: { command: string; exitCode: number };
+  lastDuplicateGuardStep?: number;
 };
 
 type StreamResult = {
@@ -33,6 +36,7 @@ type AgentRunnerDeps = {
     command: string,
     toolCallId: string
   ) => Promise<{ output: string; exitCode: number }>;
+  executeInteractiveCommand: (sessionId: string, command: string) => void;
   emitEvent: (event: AgentEvent) => void;
 };
 
@@ -40,6 +44,7 @@ export class AgentRunner {
   private readonly proposalsBySession = new Map<string, Map<string, AiCommandProposal>>();
   private readonly sessions = new Map<string, AgentSessionState>();
   private readonly planBySession = new Map<string, AgentPlanStep[]>();
+  private readonly interactivePendingBySession = new Map<string, string>();
 
   constructor(private readonly deps: AgentRunnerDeps) {}
 
@@ -50,6 +55,10 @@ export class AgentRunner {
     }
     if (action.kind === 'approve_tool') {
       void this.handleApproveTool(action);
+      return;
+    }
+    if (action.kind === 'confirm_tool') {
+      this.handleConfirmTool(action);
       return;
     }
     if (action.kind === 'reject_tool') {
@@ -84,7 +93,8 @@ export class AgentRunner {
       goal: action.content,
       step: 0,
       model,
-      maxSteps: action.maxSteps ?? 8
+      maxSteps: action.maxSteps ?? 8,
+      planCursor: 0
     };
 
     this.sessions.set(action.sessionId, session);
@@ -144,6 +154,13 @@ export class AgentRunner {
     }
 
     const { response, messageText } = this.deps.parseAssistant(rawText);
+    if (
+      response.plan?.length &&
+      (session.step === 0 || (this.planBySession.get(session.sessionId)?.length ?? 0) === 0)
+    ) {
+      this.setPlanFromResponse(session.sessionId, response.plan);
+    }
+
     const result: StreamResult = {
       response: this.trackProposals(session.sessionId, response),
       messageText,
@@ -172,7 +189,35 @@ export class AgentRunner {
 
     const proposal = result.response.commands[0];
     const toolCallId = proposal.id ?? randomUUID();
-    this.addPlanStep(session.sessionId, toolCallId, `Run: ${proposal.command}`);
+    if (
+      session.lastCommand &&
+      session.lastCommand.exitCode === 0 &&
+      proposal.command.trim() === session.lastCommand.command.trim()
+    ) {
+      if (session.lastDuplicateGuardStep === session.step) {
+        this.updateState(session.sessionId, 'finish', 'Repeated command detected.');
+        this.deps.emitEvent({
+          version: 1,
+          kind: 'message',
+          sessionId: session.sessionId,
+          timestamp: Date.now(),
+          messageId: randomUUID(),
+          role: 'assistant',
+          content:
+            'I already ran that command and got results. Please let me know what you want to do next.'
+        });
+        return;
+      }
+      session.lastDuplicateGuardStep = session.step;
+      void this.runStep(
+        session,
+        `The last proposed command repeats the previous successful command. Avoid repeating it and either advance or mark done.`
+      );
+      return;
+    }
+    if ((this.planBySession.get(session.sessionId)?.length ?? 0) === 0) {
+      this.addPlanStep(session.sessionId, toolCallId, `Run: ${proposal.command}`);
+    }
     this.updateState(session.sessionId, 'act', 'Awaiting command approval.');
     this.deps.emitEvent({
       version: 1,
@@ -184,7 +229,8 @@ export class AgentRunner {
         name: 'execute_command',
         input: { command: proposal.command },
         requiresApproval: proposal.requiresApproval,
-        risk: proposal.risk
+        risk: proposal.risk,
+        interactive: proposal.interactive
       }
     });
     this.deps.emitEvent({
@@ -233,7 +279,19 @@ export class AgentRunner {
 
     try {
       this.setPlanStepStatus(action.sessionId, action.toolCallId, 'in_progress');
-      this.updateState(action.sessionId, 'observe', 'Command running.');
+      this.setPlanCursorStatus(action.sessionId, 'in_progress');
+      this.updateState(
+        action.sessionId,
+        'observe',
+        proposal.interactive ? 'Interactive command running.' : 'Command running.'
+      );
+
+      if (proposal.interactive) {
+        this.deps.executeInteractiveCommand(action.sessionId, proposal.command);
+        this.interactivePendingBySession.set(action.sessionId, action.toolCallId);
+        return;
+      }
+
       const result = await this.deps.executeCommand(action.sessionId, proposal.command, action.toolCallId);
       const formattedOutput = this.formatCommandOutput(result.output);
       this.deps.emitEvent({
@@ -248,7 +306,12 @@ export class AgentRunner {
         }
       });
       this.setPlanStepStatus(action.sessionId, action.toolCallId, 'done');
+      this.setPlanCursorStatus(action.sessionId, 'done');
       const session = this.sessions.get(action.sessionId);
+      if (session) {
+        session.lastCommand = { command: proposal.command, exitCode: result.exitCode };
+        session.lastDuplicateGuardStep = undefined;
+      }
       if (session) {
         session.step += 1;
         this.updateState(action.sessionId, 'reflect', 'Evaluating command output.');
@@ -259,6 +322,7 @@ export class AgentRunner {
       }
     } catch (error) {
       this.setPlanStepStatus(action.sessionId, action.toolCallId, 'blocked');
+      this.setPlanCursorStatus(action.sessionId, 'blocked');
       this.updateState(action.sessionId, 'error', 'Command execution failed.');
       this.deps.emitEvent({
         version: 1,
@@ -274,6 +338,45 @@ export class AgentRunner {
     }
   }
 
+  private handleConfirmTool(action: Extract<AgentAction, { kind: 'confirm_tool' }>) {
+    const pendingToolId = this.interactivePendingBySession.get(action.sessionId);
+    if (!pendingToolId || pendingToolId !== action.toolCallId) {
+      this.deps.emitEvent({
+        version: 1,
+        kind: 'tool_result',
+        sessionId: action.sessionId,
+        timestamp: Date.now(),
+        result: {
+          toolCallId: action.toolCallId,
+          status: 'error',
+          error: 'Interactive command was not running.'
+        }
+      });
+      return;
+    }
+
+    this.interactivePendingBySession.delete(action.sessionId);
+    this.deps.emitEvent({
+      version: 1,
+      kind: 'tool_result',
+      sessionId: action.sessionId,
+      timestamp: Date.now(),
+      result: {
+        toolCallId: action.toolCallId,
+        status: 'success',
+        output: 'Interactive command completed (user confirmed).'
+      }
+    });
+    this.setPlanStepStatus(action.sessionId, action.toolCallId, 'done');
+    this.setPlanCursorStatus(action.sessionId, 'done');
+
+    const session = this.sessions.get(action.sessionId);
+    if (session) {
+      session.step += 1;
+      this.updateState(action.sessionId, 'reflect', 'Evaluating command output.');
+      void this.runStep(session, 'Interactive command completed (user confirmed).');
+    }
+  }
   private handleRejectTool(action: Extract<AgentAction, { kind: 'reject_tool' }>) {
     this.updateState(action.sessionId, 'finish', 'Command rejected.');
     this.setPlanStepStatus(action.sessionId, action.toolCallId, 'blocked');
@@ -297,6 +400,20 @@ export class AgentRunner {
     this.emitPlanUpdate(sessionId);
   }
 
+  private setPlanFromResponse(sessionId: string, plan: string[]) {
+    const steps = plan.map((description) => ({
+      id: randomUUID(),
+      description,
+      status: 'pending' as const
+    }));
+    this.planBySession.set(sessionId, steps);
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.planCursor = 0;
+    }
+    this.emitPlanUpdate(sessionId);
+  }
+
   private setPlanStepStatus(sessionId: string, stepId: string, status: AgentPlanStep['status']) {
     const steps = this.planBySession.get(sessionId);
     if (!steps) {
@@ -304,6 +421,22 @@ export class AgentRunner {
     }
     const updated = steps.map((step) => (step.id === stepId ? { ...step, status } : step));
     this.planBySession.set(sessionId, updated);
+    this.emitPlanUpdate(sessionId);
+  }
+
+  private setPlanCursorStatus(sessionId: string, status: AgentPlanStep['status']) {
+    const steps = this.planBySession.get(sessionId);
+    const session = this.sessions.get(sessionId);
+    if (!steps || steps.length === 0 || !session) {
+      return;
+    }
+
+    const index = Math.min(session.planCursor, steps.length - 1);
+    const updated = steps.map((step, idx) => (idx === index ? { ...step, status } : step));
+    this.planBySession.set(sessionId, updated);
+    if (status === 'done' && session.planCursor < steps.length) {
+      session.planCursor += 1;
+    }
     this.emitPlanUpdate(sessionId);
   }
 

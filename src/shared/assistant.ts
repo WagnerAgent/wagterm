@@ -21,12 +21,14 @@ export type AiCommandProposal = {
   rationale?: string;
   risk?: AiCommandRisk;
   requiresApproval: boolean;
+  interactive?: boolean;
 };
 
 export type AiCommandResponse = {
   commands: AiCommandProposal[];
   message?: string;
   intent?: 'chat' | 'plan' | 'command';
+  plan?: string[];
   action?:
     | 'inspect_services'
     | 'inspect_ports'
@@ -96,12 +98,18 @@ export const AI_COMMAND_RESPONSE_SCHEMA = {
           command: { type: 'string' },
           rationale: { type: 'string' },
           risk: { type: 'string', enum: ['low', 'medium', 'high'] },
-          requiresApproval: { type: 'boolean' }
+          requiresApproval: { type: 'boolean' },
+          interactive: { type: 'boolean' }
         },
         required: ['command']
       }
     },
     intent: { type: 'string', enum: ['chat', 'plan', 'command'] },
+    plan: {
+      type: 'array',
+      items: { type: 'string' },
+      maxItems: 6
+    },
     action: {
       type: 'string',
       enum: [
@@ -129,6 +137,7 @@ export const AI_COMMAND_RESPONSE_SCHEMA = {
 export const AI_COMMAND_RESPONSE_EXAMPLE: AiCommandResponse = {
   message: 'I can check disk usage first.',
   intent: 'command',
+  plan: ['Check current disk usage', 'Identify large directories', 'Recommend cleanup steps'],
   action: 'inspect_disk',
   done: false,
   commands: [
@@ -137,7 +146,8 @@ export const AI_COMMAND_RESPONSE_EXAMPLE: AiCommandResponse = {
       command: 'df -h',
       rationale: 'Shows filesystem usage in human-readable format.',
       risk: 'low',
-      requiresApproval: true
+      requiresApproval: true,
+      interactive: false
     }
   ]
 };
@@ -161,6 +171,14 @@ export const parseAiCommandResponse = (input: unknown): AiCommandResponse => {
   const intent =
     input.intent === 'chat' || input.intent === 'plan' || input.intent === 'command'
       ? input.intent
+      : undefined;
+  const plan =
+    Array.isArray(input.plan) && input.plan.length > 0
+      ? input.plan
+          .filter((item) => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
+          .slice(0, 6)
       : undefined;
   const action =
     input.action === 'inspect_services' ||
@@ -195,9 +213,10 @@ export const parseAiCommandResponse = (input: unknown): AiCommandResponse => {
       command,
       rationale: typeof item.rationale === 'string' ? item.rationale : undefined,
       risk: normalizeRisk(item.risk),
-      requiresApproval: typeof item.requiresApproval === 'boolean' ? item.requiresApproval : true
+      requiresApproval: typeof item.requiresApproval === 'boolean' ? item.requiresApproval : true,
+      interactive: typeof item.interactive === 'boolean' ? item.interactive : undefined
     });
   }
 
-  return { commands, message, intent, action, done };
+  return { commands, message, intent, plan, action, done };
 };

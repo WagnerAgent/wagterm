@@ -189,6 +189,7 @@ type AssistantPaneProps = {
   setSelectedModel: (value: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5') => void;
   handleSendConversation: (options?: { maxSteps?: number }) => void;
   handleApproveCommand: (sessionId: string, proposalId: string) => void;
+  handleConfirmCommand: (sessionId: string, proposalId: string) => void;
   handleRejectCommand: (sessionId: string, proposalId: string) => void;
   findInTerminal: (sessionId: string, query: string, direction: 'next' | 'previous') => boolean;
   commandHistory: CommandHistoryEntry[];
@@ -204,6 +205,7 @@ const AssistantPane = ({
   setSelectedModel,
   handleSendConversation,
   handleApproveCommand,
+  handleConfirmCommand,
   handleRejectCommand,
   findInTerminal,
   commandHistory
@@ -403,19 +405,26 @@ const AssistantPane = ({
                       <div className="rounded-lg border border-border bg-card p-3 space-y-2 max-w-[85%]">
                         <div className="flex items-start justify-between gap-2">
                           <code className="text-xs text-foreground font-mono break-all">{msg.proposal.command}</code>
-                          {msg.proposal.risk && (
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                                msg.proposal.risk === 'high'
-                                  ? 'bg-red-500/20 text-red-200'
-                                  : msg.proposal.risk === 'medium'
-                                    ? 'bg-yellow-500/20 text-yellow-200'
-                                    : 'bg-emerald-500/20 text-emerald-200'
-                              }`}
-                            >
-                              {msg.proposal.risk}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {msg.proposal.interactive && (
+                              <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase bg-sky-500/20 text-sky-200">
+                                interactive
+                              </span>
+                            )}
+                            {msg.proposal.risk && (
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                                  msg.proposal.risk === 'high'
+                                    ? 'bg-red-500/20 text-red-200'
+                                    : msg.proposal.risk === 'medium'
+                                      ? 'bg-yellow-500/20 text-yellow-200'
+                                      : 'bg-emerald-500/20 text-emerald-200'
+                                }`}
+                              >
+                                {msg.proposal.risk}
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         {msg.proposal.rationale && <p className="text-xs text-muted-foreground">{msg.proposal.rationale}</p>}
@@ -428,6 +437,15 @@ const AssistantPane = ({
                           >
                             Approve
                           </Button>
+                          {msg.proposal.interactive && msg.proposal.status === 'approved' && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handleConfirmCommand(session.id, msg.proposal!.id)}
+                            >
+                              Continue
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"

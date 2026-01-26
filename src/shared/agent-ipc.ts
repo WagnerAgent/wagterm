@@ -26,6 +26,7 @@ export type AgentToolCall = {
   input: Record<string, unknown>;
   requiresApproval: boolean;
   risk?: 'low' | 'medium' | 'high';
+  interactive?: boolean;
 };
 
 export type AgentToolResult = {
@@ -87,6 +88,10 @@ export type AgentAction =
     })
   | (AgentActionBase & {
       kind: 'approve_tool';
+      toolCallId: string;
+    })
+  | (AgentActionBase & {
+      kind: 'confirm_tool';
       toolCallId: string;
     })
   | (AgentActionBase & {

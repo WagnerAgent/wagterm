@@ -196,9 +196,11 @@ declare global {
               rationale?: string;
               risk?: 'low' | 'medium' | 'high';
               requiresApproval: boolean;
+              interactive?: boolean;
             }>;
             message?: string;
             intent?: 'chat' | 'plan' | 'command';
+            plan?: string[];
           };
           rawText?: string;
         }>;
@@ -227,8 +229,11 @@ declare global {
               rationale?: string;
               risk?: 'low' | 'medium' | 'high';
               requiresApproval: boolean;
+              interactive?: boolean;
             }>;
             message?: string;
+            intent?: 'chat' | 'plan' | 'command';
+            plan?: string[];
           };
           rawText?: string;
         }) => void) => () => void;
@@ -237,7 +242,7 @@ declare global {
           sendAction: (action: {
             version: 1;
             sessionId: string;
-            kind: 'user_message' | 'approve_tool' | 'reject_tool' | 'cancel' | 'provide_context';
+            kind: 'user_message' | 'approve_tool' | 'confirm_tool' | 'reject_tool' | 'cancel' | 'provide_context';
             messageId?: string;
             content?: string;
             model?: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
@@ -273,6 +278,7 @@ declare global {
               input: Record<string, unknown>;
               requiresApproval: boolean;
               risk?: 'low' | 'medium' | 'high';
+              interactive?: boolean;
             };
             result?: {
               toolCallId: string;
