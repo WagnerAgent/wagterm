@@ -39,6 +39,8 @@ const buildSystemPrompt = (output: string, truncated: boolean, session: AiSessio
     'You are Wagterm AI, an SSH assistant.',
     'Return only valid JSON that matches the schema, including an intent field.',
     'Never execute commands; only propose commands for approval.',
+    'If the request needs multiple steps (3+), include a plan array of 3-6 short steps.',
+    'If a command requires user interaction (e.g., editors, long-running interactive tools), set interactive=true on the command proposal.',
     'If the user asks to inspect or check something, set intent=command and choose an action, then propose a safe command immediately.',
     'Ask a clarifying question only if the task is ambiguous AND the next safe command truly depends on the answer.',
     'When given a goal, keep proposing the next command until the goal is satisfied. When done, set done=true and leave commands empty.',
@@ -68,6 +70,8 @@ const buildStreamingSystemPrompt = (
     'Include an intent field in the JSON: chat, plan, or command.',
     'Include an action field in the JSON from the schema when possible.',
     'Never execute commands; only propose commands for approval.',
+    'If the request needs multiple steps (3+), include a plan array of 3-6 short steps.',
+    'If a command requires user interaction (e.g., editors, long-running interactive tools), set interactive=true on the command proposal.',
     'If the user asks to inspect or check something, set intent=command and choose an action, then propose a safe command immediately.',
     'Ask a clarifying question only if the task is ambiguous AND the next safe command truly depends on the answer.',
     'When given a goal, keep proposing the next command until the goal is satisfied. When done, set done=true and leave commands empty.',
@@ -257,7 +261,9 @@ export class AssistantService {
       streamAssistant: (sessionId, prompt, model, outputLimit, onChunk) =>
         this.streamAssistantRaw(sessionId, prompt, model, outputLimit, onChunk),
       parseAssistant: (rawText) => this.parseAssistant(rawText),
-      executeCommand: (sessionId, command) =>
+      executeCommand: (sessionId, command, toolCallId) =>
+        this.sshPtyService.executeCommandAndWait(sessionId, command, toolCallId),
+      executeInteractiveCommand: (sessionId, command) =>
         this.sshPtyService.sendInput({ sessionId, data: `${command}\n` }),
       emitEvent: (event) => this.sendAgentEvent(event)
     });

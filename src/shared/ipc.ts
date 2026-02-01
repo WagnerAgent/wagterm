@@ -24,6 +24,7 @@ export const IpcChannels = {
   sshSessionResize: 'ssh:session:resize',
   sshSessionClose: 'ssh:session:close',
   sshSessionOutput: 'ssh:session:output',
+  sshSessionCommand: 'ssh:session:command',
   assistantGenerate: 'assistant:generate',
   assistantStreamStart: 'assistant:stream:start',
   assistantStreamChunk: 'assistant:stream:chunk',
@@ -33,5 +34,6 @@ export const IpcChannels = {
   assistantAgentAction: 'assistant:agent:action',
   sshSessionData: 'ssh:session:data',
   sshSessionExit: 'ssh:session:exit',
+  commandHistoryList: 'db:command-history:list',
   dialogOpenFile: 'app:dialog:open-file'
 } as const;

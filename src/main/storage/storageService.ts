@@ -6,6 +6,7 @@ import type {
   AddConnectionResponse,
   AddKeyRequest,
   AddKeyResponse,
+  CommandHistoryEntry,
   ConnectionProfile,
   DeleteConnectionRequest,
   DeleteConnectionResponse,
@@ -13,6 +14,8 @@ import type {
   DeleteKeyResponse,
   KeyRecord,
   ListConnectionProfilesResponse,
+  ListCommandHistoryRequest,
+  ListCommandHistoryResponse,
   ListKeysResponse,
   UpdateConnectionRequest,
   UpdateConnectionResponse,
@@ -108,6 +111,28 @@ const validateConnectionProfile = (
 
   if (profile.knownHostsPath && !isAbsolute(profile.knownHostsPath)) {
     errors.push('Known hosts path must be absolute.');
+  }
+
+  if (profile.jumpHost) {
+    const jump = profile.jumpHost;
+    if (!jump.host.trim()) {
+      errors.push('Jump host is required.');
+    }
+    if (!jump.username.trim()) {
+      errors.push('Jump host username is required.');
+    }
+    if (!jump.port || jump.port <= 0 || jump.port > 65535) {
+      errors.push('Jump host port must be 1-65535.');
+    }
+    if (jump.authMethod === 'pem' && !jump.credentialId && !jump.keyPath) {
+      errors.push('Jump host SSH key is required.');
+    }
+    if (jump.keyPath && !isAbsolute(jump.keyPath)) {
+      errors.push('Jump host key path must be absolute.');
+    }
+    if (jump.knownHostsPath && !isAbsolute(jump.knownHostsPath)) {
+      errors.push('Jump host known hosts path must be absolute.');
+    }
   }
 
   return errors;
@@ -218,6 +243,14 @@ export class StorageService {
         key_path,
         host_key_policy,
         known_hosts_path,
+        jump_host,
+        jump_port,
+        jump_username,
+        jump_auth_method,
+        jump_credential_id,
+        jump_key_path,
+        jump_host_key_policy,
+        jump_known_hosts_path,
         created_at
       )
       VALUES (
@@ -231,6 +264,14 @@ export class StorageService {
         @keyPath,
         @hostKeyPolicy,
         @knownHostsPath,
+        @jumpHost,
+        @jumpPort,
+        @jumpUsername,
+        @jumpAuthMethod,
+        @jumpCredentialId,
+        @jumpKeyPath,
+        @jumpHostKeyPolicy,
+        @jumpKnownHostsPath,
         @createdAt
       )
     `);
@@ -246,6 +287,14 @@ export class StorageService {
       keyPath: profile.keyPath ?? null,
       hostKeyPolicy: profile.hostKeyPolicy ?? null,
       knownHostsPath: profile.knownHostsPath ?? null,
+      jumpHost: profile.jumpHost?.host ?? null,
+      jumpPort: profile.jumpHost?.port ?? null,
+      jumpUsername: profile.jumpHost?.username ?? null,
+      jumpAuthMethod: profile.jumpHost?.authMethod ?? null,
+      jumpCredentialId: profile.jumpHost?.credentialId ?? null,
+      jumpKeyPath: profile.jumpHost?.keyPath ?? null,
+      jumpHostKeyPolicy: profile.jumpHost?.hostKeyPolicy ?? null,
+      jumpKnownHostsPath: profile.jumpHost?.knownHostsPath ?? null,
       createdAt: new Date().toISOString()
     });
 
@@ -273,7 +322,15 @@ export class StorageService {
           credential_id = @credentialId,
           key_path = @keyPath,
           host_key_policy = @hostKeyPolicy,
-          known_hosts_path = @knownHostsPath
+          known_hosts_path = @knownHostsPath,
+          jump_host = @jumpHost,
+          jump_port = @jumpPort,
+          jump_username = @jumpUsername,
+          jump_auth_method = @jumpAuthMethod,
+          jump_credential_id = @jumpCredentialId,
+          jump_key_path = @jumpKeyPath,
+          jump_host_key_policy = @jumpHostKeyPolicy,
+          jump_known_hosts_path = @jumpKnownHostsPath
       WHERE id = @id
     `);
 
@@ -287,7 +344,15 @@ export class StorageService {
       credentialId: profile.credentialId ?? null,
       keyPath: profile.keyPath ?? null,
       hostKeyPolicy: profile.hostKeyPolicy ?? null,
-      knownHostsPath: profile.knownHostsPath ?? null
+      knownHostsPath: profile.knownHostsPath ?? null,
+      jumpHost: profile.jumpHost?.host ?? null,
+      jumpPort: profile.jumpHost?.port ?? null,
+      jumpUsername: profile.jumpHost?.username ?? null,
+      jumpAuthMethod: profile.jumpHost?.authMethod ?? null,
+      jumpCredentialId: profile.jumpHost?.credentialId ?? null,
+      jumpKeyPath: profile.jumpHost?.keyPath ?? null,
+      jumpHostKeyPolicy: profile.jumpHost?.hostKeyPolicy ?? null,
+      jumpKnownHostsPath: profile.jumpHost?.knownHostsPath ?? null
     });
 
     if (profile.authMethod === 'password') {
@@ -319,12 +384,73 @@ export class StorageService {
                 credential_id as credentialId,
                 key_path as keyPath,
                 host_key_policy as hostKeyPolicy,
-                known_hosts_path as knownHostsPath
+                known_hosts_path as knownHostsPath,
+                jump_host as jumpHost,
+                jump_port as jumpPort,
+                jump_username as jumpUsername,
+                jump_auth_method as jumpAuthMethod,
+                jump_credential_id as jumpCredentialId,
+                jump_key_path as jumpKeyPath,
+                jump_host_key_policy as jumpHostKeyPolicy,
+                jump_known_hosts_path as jumpKnownHostsPath
          FROM connections`
       )
       .all();
 
-    return { profiles: rows } as ListConnectionProfilesResponse;
+    const profiles = rows.map((row) => {
+      const hasJumpHost = Boolean(row.jumpHost || row.jumpUsername || row.jumpPort);
+      return {
+        ...row,
+        jumpHost: hasJumpHost
+          ? {
+              host: row.jumpHost ?? '',
+              port: row.jumpPort ?? 22,
+              username: row.jumpUsername ?? '',
+              authMethod: row.jumpAuthMethod ?? 'pem',
+              credentialId: row.jumpCredentialId ?? undefined,
+              keyPath: row.jumpKeyPath ?? undefined,
+              hostKeyPolicy: row.jumpHostKeyPolicy ?? undefined,
+              knownHostsPath: row.jumpKnownHostsPath ?? undefined
+            }
+          : undefined
+      };
+    });
+
+    return { profiles } as ListConnectionProfilesResponse;
+  }
+
+  addCommandHistory(entry: CommandHistoryEntry): void {
+    const statement = this.db.prepare(`
+      INSERT INTO command_history (id, connection_id, session_id, command, created_at)
+      VALUES (@id, @connectionId, @sessionId, @command, @createdAt)
+    `);
+
+    statement.run({
+      id: entry.id,
+      connectionId: entry.connectionId,
+      sessionId: entry.sessionId,
+      command: entry.command,
+      createdAt: entry.createdAt
+    });
+  }
+
+  listCommandHistory(request: ListCommandHistoryRequest): ListCommandHistoryResponse {
+    const limit = request.limit ?? 200;
+    const rows = this.db
+      .prepare(
+        `SELECT id,
+                connection_id as connectionId,
+                session_id as sessionId,
+                command,
+                created_at as createdAt
+         FROM command_history
+         WHERE connection_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(request.connectionId, limit);
+
+    return { entries: rows } as ListCommandHistoryResponse;
   }
 
   async addKey(request: AddKeyRequest): Promise<AddKeyResponse> {

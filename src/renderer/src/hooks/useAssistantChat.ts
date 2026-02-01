@@ -116,11 +116,24 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAssistantC
       return;
     }
 
-    updateProposalStatus(sessionId, proposalId, 'approved');
+    const statusMessage = proposal.interactive
+      ? 'Interactive command running. Click Continue when finished.'
+      : undefined;
+    updateProposalStatus(sessionId, proposalId, 'approved', statusMessage);
     window.wagterm.assistant.agent.sendAction({
       version: 1,
       sessionId,
       kind: 'approve_tool',
+      toolCallId: proposalId
+    });
+  };
+
+  const handleConfirmCommand = (sessionId: string, proposalId: string) => {
+    updateProposalStatus(sessionId, proposalId, 'approved', 'Interactive command completed.');
+    window.wagterm.assistant.agent.sendAction({
+      version: 1,
+      sessionId,
+      kind: 'confirm_tool',
       toolCallId: proposalId
     });
   };
@@ -161,7 +174,10 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAssistantC
     const hasPending = (conversationMessagesRef.current.get(sessionId) ?? []).some(
       (message) => message.kind === 'proposal' && message.proposal?.status === 'pending'
     );
-    if (hasPending) {
+    const hasInteractiveRunning = (conversationMessagesRef.current.get(sessionId) ?? []).some(
+      (message) => message.kind === 'proposal' && message.proposal?.interactive && message.proposal?.status === 'approved'
+    );
+    if (hasPending || hasInteractiveRunning) {
       setConversationMessages((prev) => {
         const newMap = new Map(prev);
         const messages = newMap.get(sessionId) || [];
@@ -171,7 +187,9 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAssistantC
             id: crypto.randomUUID(),
             role: 'assistant',
             kind: 'text',
-            content: 'Please approve or reject the pending command before continuing.'
+            content: hasInteractiveRunning
+              ? 'Please finish the interactive command and click Continue before continuing.'
+              : 'Please approve or reject the pending command before continuing.'
           }
         ]);
         return newMap;
@@ -238,6 +256,7 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAssistantC
                 rationale: undefined,
                 risk: proposal.risk,
                 requiresApproval: proposal.requiresApproval,
+                interactive: proposal.interactive,
                 status: 'pending'
               }
             }
@@ -291,6 +310,7 @@ export const useAssistantChat = ({ getSessionById, getActiveTab }: UseAssistantC
     setSelectedModelBySession,
     handleSendConversation,
     handleApproveCommand,
+    handleConfirmCommand,
     handleRejectCommand,
     registerSession,
     unregisterSession

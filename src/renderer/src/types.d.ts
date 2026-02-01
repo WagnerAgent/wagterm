@@ -21,6 +21,15 @@ declare global {
             credentialId?: string;
             hostKeyPolicy?: 'strict' | 'accept-new';
             knownHostsPath?: string;
+            jumpHost?: {
+              host: string;
+              port: number;
+              username: string;
+              authMethod: 'pem' | 'password';
+              credentialId?: string;
+              hostKeyPolicy?: 'strict' | 'accept-new';
+              knownHostsPath?: string;
+            };
           }>;
         }>;
         addConnection: (request: {
@@ -34,6 +43,15 @@ declare global {
             credentialId?: string;
             hostKeyPolicy?: 'strict' | 'accept-new';
             knownHostsPath?: string;
+            jumpHost?: {
+              host: string;
+              port: number;
+              username: string;
+              authMethod: 'pem' | 'password';
+              credentialId?: string;
+              hostKeyPolicy?: 'strict' | 'accept-new';
+              knownHostsPath?: string;
+            };
           };
           password?: string;
         }) => Promise<{ profile: { id: string } }>;
@@ -48,6 +66,15 @@ declare global {
             credentialId?: string;
             hostKeyPolicy?: 'strict' | 'accept-new';
             knownHostsPath?: string;
+            jumpHost?: {
+              host: string;
+              port: number;
+              username: string;
+              authMethod: 'pem' | 'password';
+              credentialId?: string;
+              hostKeyPolicy?: 'strict' | 'accept-new';
+              knownHostsPath?: string;
+            };
           };
           password?: string;
         }) => Promise<{ profile: { id: string } }>;
@@ -88,6 +115,15 @@ declare global {
           clearPassphrase?: boolean;
         }) => Promise<{ key: { id: string } }>;
         importPem: (request: { fileName: string; data: number[] }) => Promise<{ path: string }>;
+        listCommandHistory: (request: { connectionId: string; limit?: number }) => Promise<{
+          entries: Array<{
+            id: string;
+            connectionId: string;
+            sessionId: string;
+            command: string;
+            createdAt: string;
+          }>;
+        }>;
       };
       ssh: {
         listMcpServers: () => Promise<{ servers: Array<{ id: string }> }>;
@@ -104,6 +140,15 @@ declare global {
             credentialId?: string;
             hostKeyPolicy?: 'strict' | 'accept-new';
             knownHostsPath?: string;
+            jumpHost?: {
+              host: string;
+              port: number;
+              username: string;
+              authMethod: 'pem' | 'password';
+              credentialId?: string;
+              hostKeyPolicy?: 'strict' | 'accept-new';
+              knownHostsPath?: string;
+            };
           };
           cols: number;
           rows: number;
@@ -120,6 +165,14 @@ declare global {
         onData: (listener: (event: { sessionId: string; data: string }) => void) => () => void;
         onExit: (
           listener: (event: { sessionId: string; exitCode: number | null; signal?: number }) => void
+        ) => () => void;
+        onCommand: (
+          listener: (event: {
+            sessionId: string;
+            connectionId: string;
+            command: string;
+            createdAt: string;
+          }) => void
         ) => () => void;
       };
       assistant: {
@@ -143,9 +196,11 @@ declare global {
               rationale?: string;
               risk?: 'low' | 'medium' | 'high';
               requiresApproval: boolean;
+              interactive?: boolean;
             }>;
             message?: string;
             intent?: 'chat' | 'plan' | 'command';
+            plan?: string[];
           };
           rawText?: string;
         }>;
@@ -174,8 +229,11 @@ declare global {
               rationale?: string;
               risk?: 'low' | 'medium' | 'high';
               requiresApproval: boolean;
+              interactive?: boolean;
             }>;
             message?: string;
+            intent?: 'chat' | 'plan' | 'command';
+            plan?: string[];
           };
           rawText?: string;
         }) => void) => () => void;
@@ -184,7 +242,7 @@ declare global {
           sendAction: (action: {
             version: 1;
             sessionId: string;
-            kind: 'user_message' | 'approve_tool' | 'reject_tool' | 'cancel' | 'provide_context';
+            kind: 'user_message' | 'approve_tool' | 'confirm_tool' | 'reject_tool' | 'cancel' | 'provide_context';
             messageId?: string;
             content?: string;
             model?: 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5';
@@ -220,6 +278,7 @@ declare global {
               input: Record<string, unknown>;
               requiresApproval: boolean;
               risk?: 'low' | 'medium' | 'high';
+              interactive?: boolean;
             };
             result?: {
               toolCallId: string;

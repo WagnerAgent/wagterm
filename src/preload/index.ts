@@ -18,11 +18,14 @@ import type {
   ImportPemRequest,
   ImportPemResponse,
   DisconnectResponse,
+  ListCommandHistoryRequest,
+  ListCommandHistoryResponse,
   ListConnectionProfilesResponse,
   ListConnectionsResponse,
   ListKeysResponse,
   ListMcpServersResponse,
   SshSessionCloseRequest,
+  SshSessionCommandEvent,
   SshSessionDataEvent,
   SshSessionExitEvent,
   SshSessionInputRequest,
@@ -73,7 +76,9 @@ contextBridge.exposeInMainWorld('wagterm', {
     deleteKey: (request: DeleteKeyRequest): Promise<DeleteKeyResponse> =>
       ipcRenderer.invoke(IpcChannels.keysDelete, request),
     importPem: (request: ImportPemRequest): Promise<ImportPemResponse> =>
-      ipcRenderer.invoke(IpcChannels.keysImportPem, request)
+      ipcRenderer.invoke(IpcChannels.keysImportPem, request),
+    listCommandHistory: (request: ListCommandHistoryRequest): Promise<ListCommandHistoryResponse> =>
+      ipcRenderer.invoke(IpcChannels.commandHistoryList, request)
   },
   ssh: {
     listMcpServers: (): Promise<ListMcpServersResponse> =>
@@ -109,6 +114,12 @@ contextBridge.exposeInMainWorld('wagterm', {
         listener(payload)
       );
       return () => ipcRenderer.removeAllListeners(IpcChannels.sshSessionExit);
+    },
+    onCommand: (listener: (event: SshSessionCommandEvent) => void) => {
+      ipcRenderer.on(IpcChannels.sshSessionCommand, (_event, payload: SshSessionCommandEvent) =>
+        listener(payload)
+      );
+      return () => ipcRenderer.removeAllListeners(IpcChannels.sshSessionCommand);
     }
   },
   assistant: {

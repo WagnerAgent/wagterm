@@ -6,10 +6,15 @@ import keytar from 'keytar';
 import { mkdtemp, writeFile, rm } from 'fs/promises';
 import os from 'os';
 import { IpcChannels } from '../../shared/ipc';
+import type { StorageService } from '../storage/storageService';
 import type {
+  CommandHistoryEntry,
   ConnectionProfile,
   HostKeyPolicy,
+  JumpHostConfig,
+  SshAuthMethod,
   SshSessionCloseRequest,
+  SshSessionCommandEvent,
   SshSessionDataEvent,
   SshSessionExitEvent,
   SshSessionInputRequest,
@@ -24,7 +29,20 @@ type SessionRecord = {
   id: string;
   profile: ConnectionProfile;
   pty: ReturnType<typeof spawn>;
+  sender: WebContents;
   tempKeyPath?: string;
+  tempJumpKeyPath?: string;
+};
+
+type CommandWaiter = {
+  startMarker: string;
+  endMarkerPrefix: string;
+  output: string;
+  started: boolean;
+  exitCode?: number;
+  resolve: (result: { output: string; exitCode: number }) => void;
+  reject: (error: Error) => void;
+  timeout?: NodeJS.Timeout;
 };
 
 const OUTPUT_BUFFER_LIMIT = 20000;
@@ -75,7 +93,9 @@ const buildSshArgs = (
   profile: ConnectionProfile,
   policy: HostKeyPolicy,
   knownHostsPath?: string,
-  keyPathOverride?: string
+  keyPathOverride?: string,
+  jumpHost?: JumpHostConfig,
+  jumpKeyPath?: string
 ) => {
   const args: string[] = [];
 
@@ -97,6 +117,27 @@ const buildSshArgs = (
     args.push('-o', `UserKnownHostsFile=${knownHostsPath}`);
   } else if (profile.knownHostsPath) {
     args.push('-o', `UserKnownHostsFile=${profile.knownHostsPath}`);
+  }
+
+  if (jumpHost) {
+    const proxyParts = ['ssh', '-W', '%h:%p'];
+    if (jumpHost.port) {
+      proxyParts.push('-p', String(jumpHost.port));
+    }
+    if (jumpKeyPath) {
+      proxyParts.push('-i', jumpKeyPath);
+    }
+    const jumpPolicy = resolveHostKeyPolicy(jumpHost.hostKeyPolicy);
+    if (jumpPolicy === 'accept-new') {
+      proxyParts.push('-o', 'StrictHostKeyChecking=accept-new');
+    } else if (jumpPolicy === 'strict') {
+      proxyParts.push('-o', 'StrictHostKeyChecking=yes');
+    }
+    if (jumpHost.knownHostsPath) {
+      proxyParts.push('-o', `UserKnownHostsFile=${jumpHost.knownHostsPath}`);
+    }
+    proxyParts.push(`${jumpHost.username}@${jumpHost.host}`);
+    args.push('-o', `ProxyCommand=${proxyParts.join(' ')}`);
   }
 
   args.push(`${profile.username}@${profile.host}`);
@@ -168,6 +209,28 @@ const validateProfile = (profile: ConnectionProfile): string[] => {
     errors.push('Known hosts path must be absolute.');
   }
 
+  if (profile.jumpHost) {
+    const jump = profile.jumpHost;
+    if (!jump.host.trim()) {
+      errors.push('Jump host must be a hostname or IP.');
+    }
+    if (!jump.username.trim()) {
+      errors.push('Jump host username is required.');
+    }
+    if (!isValidPort(jump.port)) {
+      errors.push('Jump host port must be 1-65535.');
+    }
+    if (jump.authMethod === 'pem' && !jump.keyPath && !jump.credentialId) {
+      errors.push('Jump host SSH key is required.');
+    }
+    if (jump.keyPath && !isAbsolute(jump.keyPath)) {
+      errors.push('Jump host key path must be absolute.');
+    }
+    if (jump.knownHostsPath && !isAbsolute(jump.knownHostsPath)) {
+      errors.push('Jump host known hosts path must be absolute.');
+    }
+  }
+
   return errors;
 };
 
@@ -179,10 +242,17 @@ const isLocalKnownHostsPath = (pathValue?: string): boolean => {
   return isAbsolute(pathValue);
 };
 
+const isPemAuth = (authMethod: SshAuthMethod): boolean => authMethod === 'pem';
+
 export class SshPtyService {
+  private readonly inputBuffers = new Map<string, string>();
   private readonly sessions = new Map<string, SessionRecord>();
   private readonly outputBuffers = new Map<string, OutputBuffer>();
+  private readonly commandWaiters = new Map<string, CommandWaiter>();
+  private readonly outputRemainders = new Map<string, string>();
   private readonly serviceName = 'wagterm';
+
+  constructor(private readonly storageService?: StorageService) {}
 
   async startSession(
     request: SshSessionStartRequest,
@@ -199,8 +269,27 @@ export class SshPtyService {
     }
 
     const policy = resolveHostKeyPolicy(request.hostKeyPolicy ?? request.profile.hostKeyPolicy);
-    const { keyPath, tempKeyPath } = await this.resolveKeyPath(request.profile);
-    const args = buildSshArgs(request.profile, policy, request.knownHostsPath, keyPath);
+    const { keyPath, tempKeyPath } = await this.resolveKeyPath({
+      authMethod: request.profile.authMethod,
+      keyPath: request.profile.keyPath,
+      credentialId: request.profile.credentialId
+    });
+    const jumpHost = request.profile.jumpHost;
+    const { keyPath: jumpKeyPath, tempKeyPath: tempJumpKeyPath } = jumpHost
+      ? await this.resolveKeyPath({
+          authMethod: jumpHost.authMethod,
+          keyPath: jumpHost.keyPath,
+          credentialId: jumpHost.credentialId
+        })
+      : { keyPath: undefined, tempKeyPath: undefined };
+    const args = buildSshArgs(
+      request.profile,
+      policy,
+      request.knownHostsPath,
+      keyPath,
+      jumpHost,
+      jumpKeyPath
+    );
 
     const sessionId = randomUUID();
     const pty = spawn('ssh', args, {
@@ -217,25 +306,36 @@ export class SshPtyService {
       id: sessionId,
       profile: request.profile,
       pty,
-      tempKeyPath
+      sender,
+      tempKeyPath,
+      tempJumpKeyPath
     };
 
     this.sessions.set(sessionId, record);
     this.outputBuffers.set(sessionId, new OutputBuffer(OUTPUT_BUFFER_LIMIT));
+    this.inputBuffers.set(sessionId, '');
 
     pty.onData((data) => {
+      const filtered = this.filterCommandMarkers(sessionId, data);
+      if (!filtered) {
+        return;
+      }
       const buffer = this.outputBuffers.get(sessionId);
-      buffer?.append(data);
-      const payload: SshSessionDataEvent = { sessionId, data };
+      buffer?.append(filtered);
+      const payload: SshSessionDataEvent = { sessionId, data: filtered };
       sender.send(IpcChannels.sshSessionData, payload);
     });
 
     pty.onExit(({ exitCode, signal }) => {
       const payload: SshSessionExitEvent = { sessionId, exitCode, signal };
       sender.send(IpcChannels.sshSessionExit, payload);
+      this.rejectWaiters(sessionId, new Error('SSH session closed.'));
       this.sessions.delete(sessionId);
       this.outputBuffers.delete(sessionId);
+      this.inputBuffers.delete(sessionId);
+      this.outputRemainders.delete(sessionId);
       void this.cleanupTempKey(tempKeyPath);
+      void this.cleanupTempKey(tempJumpKeyPath);
     });
 
     return { sessionId };
@@ -248,6 +348,37 @@ export class SshPtyService {
     }
 
     record.pty.write(request.data);
+
+    const buffer = this.inputBuffers.get(request.sessionId) ?? '';
+    const combined = `${buffer}${request.data}`;
+    const parts = combined.split(/\r\n|\r|\n/);
+    const remainder = parts.pop() ?? '';
+    for (const part of parts) {
+      this.recordCommand(request.sessionId, part);
+    }
+    this.inputBuffers.set(request.sessionId, remainder);
+  }
+
+  async executeCommandAndWait(
+    sessionId: string,
+    command: string,
+    toolCallId: string
+  ): Promise<{ output: string; exitCode: number }> {
+    const record = this.sessions.get(sessionId);
+    if (!record) {
+      throw new Error('SSH session not found.');
+    }
+
+    const startMarker = `__WAGTERM_START_${toolCallId}__`;
+    const endMarkerPrefix = `__WAGTERM_END_${toolCallId}__:`;
+    const waiter = this.registerWaiter(sessionId, startMarker, endMarkerPrefix);
+
+    this.recordCommand(sessionId, command);
+
+    const wrapped = `printf '\\n${startMarker}\\n'; ${command}; status=$?; printf '\\n${endMarkerPrefix}%s\\n' "$status"`;
+    record.pty.write(`${wrapped}\n`);
+
+    return await waiter;
   }
 
   resize(request: SshSessionResizeRequest): void {
@@ -267,8 +398,12 @@ export class SshPtyService {
 
     record.pty.kill();
     void this.cleanupTempKey(record.tempKeyPath);
+    void this.cleanupTempKey(record.tempJumpKeyPath);
+    this.rejectWaiters(request.sessionId, new Error('SSH session closed.'));
     this.sessions.delete(request.sessionId);
     this.outputBuffers.delete(request.sessionId);
+    this.inputBuffers.delete(request.sessionId);
+    this.outputRemainders.delete(request.sessionId);
   }
 
   getRecentOutput(request: SshSessionOutputRequest): SshSessionOutputResponse {
@@ -295,20 +430,24 @@ export class SshPtyService {
     };
   }
 
-  private async resolveKeyPath(profile: ConnectionProfile): Promise<{ keyPath?: string; tempKeyPath?: string }> {
-    if (profile.authMethod !== 'pem') {
+  private async resolveKeyPath(source: {
+    authMethod: SshAuthMethod;
+    keyPath?: string;
+    credentialId?: string;
+  }): Promise<{ keyPath?: string; tempKeyPath?: string }> {
+    if (!isPemAuth(source.authMethod)) {
       return {};
     }
 
-    if (profile.keyPath) {
-      return { keyPath: profile.keyPath };
+    if (source.keyPath) {
+      return { keyPath: source.keyPath };
     }
 
-    if (!profile.credentialId) {
+    if (!source.credentialId) {
       return {};
     }
 
-    const privateKey = await keytar.getPassword(this.serviceName, `${profile.credentialId}:private`);
+    const privateKey = await keytar.getPassword(this.serviceName, `${source.credentialId}:private`);
     if (!privateKey) {
       throw new Error('No private key found for this credential. Re-add the SSH key.');
     }
@@ -334,5 +473,175 @@ export class SshPtyService {
     } catch {
       // Best-effort cleanup.
     }
+  }
+
+  private recordCommand(sessionId: string, rawCommand: string): void {
+    const cleaned = rawCommand.replace(/[\x00-\x1F\x7F]/g, '');
+    const trimmed = cleaned.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const record = this.sessions.get(sessionId);
+    if (!record) {
+      return;
+    }
+
+    const entry: CommandHistoryEntry = {
+      id: randomUUID(),
+      connectionId: record.profile.id,
+      sessionId,
+      command: trimmed,
+      createdAt: new Date().toISOString()
+    };
+
+    this.storageService?.addCommandHistory(entry);
+
+    const payload: SshSessionCommandEvent = {
+      sessionId,
+      connectionId: record.profile.id,
+      command: trimmed,
+      createdAt: entry.createdAt
+    };
+
+    record.sender.send(IpcChannels.sshSessionCommand, payload);
+  }
+
+  private registerWaiter(
+    sessionId: string,
+    startMarker: string,
+    endMarkerPrefix: string,
+    timeoutMs = 120000
+  ): Promise<{ output: string; exitCode: number }> {
+    return new Promise((resolve, reject) => {
+      if (this.commandWaiters.has(sessionId)) {
+        reject(new Error('Another command is already running.'));
+        return;
+      }
+
+      const waiter: CommandWaiter = {
+        startMarker,
+        endMarkerPrefix,
+        output: '',
+        started: false,
+        resolve,
+        reject
+      };
+      waiter.timeout = setTimeout(() => {
+        this.commandWaiters.delete(sessionId);
+        reject(new Error('Command timed out waiting for completion.'));
+      }, timeoutMs);
+
+      this.commandWaiters.set(sessionId, waiter);
+    });
+  }
+
+  private rejectWaiters(sessionId: string, error: Error): void {
+    const waiter = this.commandWaiters.get(sessionId);
+    if (!waiter) {
+      return;
+    }
+    if (waiter.timeout) {
+      clearTimeout(waiter.timeout);
+    }
+    waiter.reject(error);
+    this.commandWaiters.delete(sessionId);
+  }
+
+  private filterCommandMarkers(sessionId: string, chunk: string): string {
+    const remainder = this.outputRemainders.get(sessionId) ?? '';
+    let combined = remainder + chunk;
+    const waiter = this.commandWaiters.get(sessionId);
+    if (!waiter) {
+      if (remainder) {
+        this.outputRemainders.delete(sessionId);
+      }
+      return combined;
+    }
+
+    const tailLength = Math.max(0, Math.max(waiter.startMarker.length, waiter.endMarkerPrefix.length + 10) - 1);
+    const processable =
+      combined.length > tailLength ? combined.slice(0, combined.length - tailLength) : '';
+    const nextRemainder = combined.length > tailLength ? combined.slice(-tailLength) : combined;
+
+    let filtered = '';
+    let index = 0;
+    const startMarker = waiter.startMarker;
+    const endMarkerPrefix = waiter.endMarkerPrefix;
+    let waiterActive = true;
+
+    while (index < processable.length) {
+      const nextStart = processable.indexOf(startMarker, index);
+      const nextEnd = processable.indexOf(endMarkerPrefix, index);
+
+      let nextMarker = -1;
+      let markerType: 'start' | 'end' | null = null;
+
+      if (nextStart !== -1 && (nextEnd === -1 || nextStart < nextEnd)) {
+        nextMarker = nextStart;
+        markerType = 'start';
+      } else if (nextEnd !== -1) {
+        nextMarker = nextEnd;
+        markerType = 'end';
+      }
+
+      if (nextMarker === -1 || !markerType) {
+        const segment = processable.slice(index);
+        filtered += segment;
+        if (waiterActive && waiter.started) {
+          waiter.output += segment;
+        }
+        break;
+      }
+
+      const segment = processable.slice(index, nextMarker);
+      filtered += segment;
+      if (waiterActive && waiter.started) {
+        waiter.output += segment;
+      }
+
+      index = nextMarker;
+
+      if (markerType === 'start') {
+        if (waiterActive) {
+          waiter.started = true;
+        }
+        index += startMarker.length;
+        if (processable.startsWith('\r\n', index)) {
+          index += 2;
+        } else if (processable[index] === '\n' || processable[index] === '\r') {
+          index += 1;
+        }
+        continue;
+      }
+
+      index += endMarkerPrefix.length;
+      const codeMatch = processable.slice(index).match(/^(\d+)/);
+      if (codeMatch) {
+        waiter.exitCode = Number.parseInt(codeMatch[1], 10);
+        index += codeMatch[1].length;
+      }
+      if (processable.startsWith('\r\n', index)) {
+        index += 2;
+      } else if (processable[index] === '\n' || processable[index] === '\r') {
+        index += 1;
+      }
+
+      if (waiter.timeout) {
+        clearTimeout(waiter.timeout);
+      }
+      this.commandWaiters.delete(sessionId);
+      const output = waiter.output.replace(/\s+$/, '');
+      waiter.resolve({ output, exitCode: waiter.exitCode ?? 0 });
+      waiter.started = false;
+      waiterActive = false;
+    }
+
+    if (this.commandWaiters.has(sessionId)) {
+      this.outputRemainders.set(sessionId, nextRemainder);
+    } else {
+      this.outputRemainders.delete(sessionId);
+    }
+    return filtered;
   }
 }

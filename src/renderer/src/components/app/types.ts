@@ -1,4 +1,4 @@
-export type SectionKey = 'connections' | 'keys' | 'settings';
+export type SectionKey = 'connections' | 'keys' | 'settings' | 'dithering-demo';
 
 export type ConnectionProfile = {
   id: string;
@@ -8,6 +8,18 @@ export type ConnectionProfile = {
   username: string;
   authMethod: 'pem' | 'password';
   credentialId?: string;
+  hostKeyPolicy?: 'strict' | 'accept-new';
+  knownHostsPath?: string;
+  jumpHost?: JumpHostConfig;
+};
+
+export type JumpHostConfig = {
+  host: string;
+  port: number;
+  username: string;
+  authMethod: 'pem' | 'password';
+  credentialId?: string;
+  keyPath?: string;
   hostKeyPolicy?: 'strict' | 'accept-new';
   knownHostsPath?: string;
 };
@@ -27,12 +39,21 @@ export type TerminalSession = {
   connected: boolean;
 };
 
+export type CommandHistoryEntry = {
+  id: string;
+  connectionId: string;
+  sessionId: string;
+  command: string;
+  createdAt: string;
+};
+
 export type CommandProposal = {
   id: string;
   command: string;
   rationale?: string;
   risk?: 'low' | 'medium' | 'high';
   requiresApproval: boolean;
+  interactive?: boolean;
   status: 'pending' | 'approved' | 'rejected';
   statusMessage?: string;
 };

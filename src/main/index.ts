@@ -14,7 +14,12 @@ import type {
   UpdateAppSettingsRequest,
   UpdateAppSettingsResponse
 } from '../shared/settings';
-import type { ImportPemRequest, ImportPemResponse } from '../shared/ssh';
+import type {
+  ImportPemRequest,
+  ImportPemResponse,
+  ListCommandHistoryRequest,
+  ListCommandHistoryResponse
+} from '../shared/ssh';
 import { AssistantService } from './assistant/assistantService';
 import { clearAiKey, getAiKey, setAiKey } from './security/credentials';
 import { SshMcpService } from './ssh/sshMcpService';
@@ -42,10 +47,10 @@ const createWindow = () => {
 
 app.whenReady().then(() => {
   const sshService = new SshMcpService();
-  const sshPtyService = new SshPtyService();
-  const assistantService = new AssistantService(sshPtyService);
   const db = initializeDatabase(join(app.getPath('userData'), 'wagterm.sqlite'));
   const storageService = new StorageService(db);
+  const sshPtyService = new SshPtyService(storageService);
+  const assistantService = new AssistantService(sshPtyService);
 
   ipcMain.handle(IpcChannels.appInfo, () => ({
     name: app.getName(),
@@ -75,6 +80,11 @@ app.whenReady().then(() => {
   ipcMain.handle(IpcChannels.keysAdd, (_event, request) => storageService.addKey(request));
   ipcMain.handle(IpcChannels.keysUpdate, (_event, request) => storageService.updateKey(request));
   ipcMain.handle(IpcChannels.keysDelete, (_event, request) => storageService.deleteKey(request));
+  ipcMain.handle(
+    IpcChannels.commandHistoryList,
+    (_event, request: ListCommandHistoryRequest): ListCommandHistoryResponse =>
+      storageService.listCommandHistory(request)
+  );
   ipcMain.handle(IpcChannels.settingsGetAiKeys, async (): Promise<GetAiKeysResponse> => {
     const [openai, anthropic] = await Promise.all([getAiKey('openai'), getAiKey('anthropic')]);
     return {

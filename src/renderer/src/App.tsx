@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Key, Settings, Server } from 'lucide-react';
+import { Key, Settings, Server, Sparkles } from 'lucide-react';
 import AssistantPane from './components/app/AssistantPane';
 import ConnectionsPaneContainer from './components/app/ConnectionsPaneContainer';
+import DitheringLogoDemo from './components/app/DitheringLogoDemo';
 import KeysPaneContainer from './components/app/KeysPaneContainer';
 import SessionTabs from './components/app/SessionTabs';
 import SettingsPane from './components/app/SettingsPane';
@@ -15,7 +16,7 @@ import WagtermIcon from './assets/wagterm_icon.svg';
 const sections: Array<{ id: SectionKey; label: string; icon: React.ReactNode }> = [
   { id: 'connections', label: 'Connections', icon: <Server className="h-4 w-4" /> },
   { id: 'keys', label: 'Keys', icon: <Key className="h-4 w-4" /> },
-  { id: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> }
+  { id: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
 ];
 
 const App = () => {
@@ -43,6 +44,7 @@ const App = () => {
     setSelectedModelBySession,
     handleSendConversation,
     handleApproveCommand,
+    handleConfirmCommand,
     handleRejectCommand,
     registerSession,
     unregisterSession
@@ -57,7 +59,9 @@ const App = () => {
     setActiveTab,
     connectToProfile,
     closeSession,
-    attachTerminal
+    attachTerminal,
+    findInTerminal,
+    commandHistoryByConnection
   } = useSshSessions({
     onSessionStart: registerSession,
     onSessionClose: unregisterSession
@@ -163,7 +167,6 @@ const App = () => {
           {activeTab === 'connections' && (
             <main className="flex-1 flex flex-col overflow-hidden">
               <header className="border-b border-border px-8 py-6">
-                <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Workspace</p>
                 <h2 className="text-2xl font-semibold mt-1">{sectionTitle}</h2>
               </header>
               <div className="flex-1 overflow-auto p-8">
@@ -177,6 +180,8 @@ const App = () => {
                 {section === 'keys' && <KeysPaneContainer />}
 
                 {section === 'settings' && <SettingsPane />}
+
+                {section === 'dithering-demo' && <DitheringLogoDemo />}
               </div>
             </main>
           )}
@@ -186,7 +191,10 @@ const App = () => {
               key={session.id}
               className={activeTab === session.id ? 'flex-1 flex overflow-hidden' : 'hidden'}
             >
-              <TerminalPane session={session} attachTerminal={attachTerminal} />
+              <TerminalPane
+                session={session}
+                attachTerminal={attachTerminal}
+              />
               <div
                 className="w-1 cursor-col-resize bg-border/50 hover:bg-border"
                 onMouseDown={(event) => {
@@ -214,7 +222,10 @@ const App = () => {
                   }
                   handleSendConversation={handleSendConversation}
                   handleApproveCommand={handleApproveCommand}
+                  handleConfirmCommand={handleConfirmCommand}
                   handleRejectCommand={handleRejectCommand}
+                  findInTerminal={findInTerminal}
+                  commandHistory={commandHistoryByConnection.get(session.profile.id) ?? []}
                 />
               </div>
             </div>

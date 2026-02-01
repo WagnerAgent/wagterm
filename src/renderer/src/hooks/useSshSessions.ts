@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import type { ConnectionProfile, TerminalSession } from '../components/app/types';
+import { SearchAddon } from '@xterm/addon-search';
+import type { CommandHistoryEntry, ConnectionProfile, TerminalSession } from '../components/app/types';
 
 type UseSshSessionsOptions = {
   onSessionStart?: (sessionId: string) => void;
@@ -18,6 +19,10 @@ export const useSshSessions = ({ onSessionStart, onSessionClose }: UseSshSession
   const terminalsById = useRef<Map<string, XTerm>>(new Map());
   const terminalContainersById = useRef<Map<string, HTMLDivElement>>(new Map());
   const fitAddonsById = useRef<Map<string, FitAddon>>(new Map());
+  const searchAddonsById = useRef<Map<string, SearchAddon>>(new Map());
+  const [commandHistoryByConnection, setCommandHistoryByConnection] = useState<
+    Map<string, CommandHistoryEntry[]>
+  >(new Map());
 
   const ensureTerminal = useCallback((sessionId: string) => {
     const existing = terminalsById.current.get(sessionId);
@@ -39,6 +44,10 @@ export const useSshSessions = ({ onSessionStart, onSessionClose }: UseSshSession
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     fitAddonsById.current.set(sessionId, fitAddon);
+
+    const searchAddon = new SearchAddon();
+    terminal.loadAddon(searchAddon);
+    searchAddonsById.current.set(sessionId, searchAddon);
 
     terminal.onData((data) => {
       void window.wagterm.sshSession.sendInput({ sessionId, data });
@@ -111,6 +120,19 @@ export const useSshSessions = ({ onSessionStart, onSessionClose }: UseSshSession
     ensureTerminal(response.sessionId);
     onSessionStart?.(response.sessionId);
     setActiveTab(response.sessionId);
+
+    window.wagterm.storage
+      .listCommandHistory({ connectionId: profile.id })
+      .then((data) => {
+        setCommandHistoryByConnection((prev) => {
+          const next = new Map(prev);
+          next.set(profile.id, data.entries ?? []);
+          return next;
+        });
+      })
+      .catch(() => {
+        // Best-effort load for history panel.
+      });
 
     sessionReceivedData.current.set(response.sessionId, false);
 
@@ -196,6 +218,7 @@ export const useSshSessions = ({ onSessionStart, onSessionClose }: UseSshSession
     }
     terminalContainersById.current.delete(sessionId);
     fitAddonsById.current.delete(sessionId);
+    searchAddonsById.current.delete(sessionId);
 
     setTerminalSessions((prev) => prev.filter((session) => session.id !== sessionId));
     onSessionClose?.(sessionId);
@@ -213,6 +236,30 @@ export const useSshSessions = ({ onSessionStart, onSessionClose }: UseSshSession
       });
       connectTimeouts.current.forEach((timeout) => window.clearTimeout(timeout));
       terminalsById.current.forEach((terminal) => terminal.dispose());
+    };
+  }, []);
+
+  useEffect(() => {
+    const removeCommandListener = window.wagterm.sshSession.onCommand((payload) => {
+      setCommandHistoryByConnection((prev) => {
+        const next = new Map(prev);
+        const history = next.get(payload.connectionId) ?? [];
+        next.set(payload.connectionId, [
+          {
+            id: crypto.randomUUID(),
+            connectionId: payload.connectionId,
+            sessionId: payload.sessionId,
+            command: payload.command,
+            createdAt: payload.createdAt
+          },
+          ...history
+        ]);
+        return next;
+      });
+    });
+
+    return () => {
+      removeCommandListener();
     };
   }, []);
 
@@ -252,12 +299,30 @@ export const useSshSessions = ({ onSessionStart, onSessionClose }: UseSshSession
     return () => window.removeEventListener('resize', handleResize);
   }, [activeTab]);
 
+  const findInTerminal = useCallback(
+    (sessionId: string, query: string, direction: 'next' | 'previous') => {
+      if (!query.trim()) {
+        return false;
+      }
+      const searchAddon = searchAddonsById.current.get(sessionId);
+      if (!searchAddon) {
+        return false;
+      }
+      return direction === 'next'
+        ? searchAddon.findNext(query)
+        : searchAddon.findPrevious(query);
+    },
+    []
+  );
+
   return {
     terminalSessions,
     activeTab,
     setActiveTab,
     connectToProfile,
     closeSession,
-    attachTerminal
+    attachTerminal,
+    findInTerminal,
+    commandHistoryByConnection
   };
 };
