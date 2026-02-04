@@ -1,4 +1,4 @@
-export type SectionKey = 'connections' | 'keys' | 'settings' | 'dithering-demo';
+export type SectionKey = 'connections' | 'vaults' | 'files' | 'ai-agents' | 'agent-settings' | 'runbooks' | 'preferences';
 
 export type ConnectionProfile = {
   id: string;
