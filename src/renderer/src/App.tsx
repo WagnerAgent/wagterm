@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Key, Settings, Server, Sparkles } from 'lucide-react';
+import { Server, KeyRound, FolderOpen, Bot, SlidersHorizontal, History, Settings } from 'lucide-react';
 import AssistantPane from './components/app/AssistantPane';
 import ConnectionsPaneContainer from './components/app/ConnectionsPaneContainer';
-import DitheringLogoDemo from './components/app/DitheringLogoDemo';
-import KeysPaneContainer from './components/app/KeysPaneContainer';
+import ComingSoonPane from './components/app/ComingSoonPane';
+import VaultsPaneContainer from './components/app/VaultsPaneContainer';
 import SessionTabs from './components/app/SessionTabs';
 import SettingsPane from './components/app/SettingsPane';
 import Sidebar from './components/app/Sidebar';
@@ -13,10 +13,48 @@ import { useAssistantChat } from './hooks/useAssistantChat';
 import { useSshSessions } from './hooks/useSshSessions';
 import WagtermIcon from './assets/wagterm_icon.svg';
 
+const comingSoonContent: Record<
+  'files' | 'ai-agents' | 'agent-settings' | 'runbooks',
+  { title: string; headline: string; description: string; icon: React.ComponentType<{ className?: string }> }
+> = {
+  files: {
+    title: 'Files System',
+    headline: 'Secure File Operations',
+    description:
+      'Agentic file management and automated MCP syncing across your infrastructure. Securely transfer, edit, and audit file operations with AI oversight.',
+    icon: FolderOpen
+  },
+  'ai-agents': {
+    title: 'AI Agents',
+    headline: 'Orchestrated Automation',
+    description:
+      'Deploy specialized agents that collaborate on tasks, coordinate actions, and maintain context across long-running operations with built-in guardrails.',
+    icon: Bot
+  },
+  'agent-settings': {
+    title: 'Agent Settings',
+    headline: 'Precision Controls',
+    description:
+      'Tune model behavior, safety thresholds, and execution preferences to match your team workflows and compliance requirements.',
+    icon: SlidersHorizontal
+  },
+  runbooks: {
+    title: 'Runbooks',
+    headline: 'Repeatable Playbooks',
+    description:
+      'Codify operational procedures into reusable runbooks with step-by-step automation, approvals, and audit trails.',
+    icon: History
+  }
+};
+
 const sections: Array<{ id: SectionKey; label: string; icon: React.ReactNode }> = [
-  { id: 'connections', label: 'Connections', icon: <Server className="h-4 w-4" /> },
-  { id: 'keys', label: 'Keys', icon: <Key className="h-4 w-4" /> },
-  { id: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
+  { id: 'connections', label: 'Connections', icon: <Server className="h-5 w-5" /> },
+  { id: 'vaults', label: 'Vaults', icon: <KeyRound className="h-5 w-5" /> },
+  { id: 'files', label: 'Files', icon: <FolderOpen className="h-5 w-5" /> },
+  { id: 'ai-agents', label: 'AI Agents', icon: <Bot className="h-5 w-5" /> },
+  { id: 'agent-settings', label: 'Agent Settings', icon: <SlidersHorizontal className="h-5 w-5" /> },
+  { id: 'runbooks', label: 'Runbooks', icon: <History className="h-5 w-5" /> },
+  { id: 'preferences', label: 'Preferences', icon: <Settings className="h-5 w-5" /> },
 ];
 
 const App = () => {
@@ -135,6 +173,8 @@ const App = () => {
     return current?.label ?? 'Connections';
   }, [section]);
 
+  const isComingSoonSection = section in comingSoonContent;
+
   if (showSplash) {
     return (
       <div
@@ -154,34 +194,45 @@ const App = () => {
       )}
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <SessionTabs
-          terminalSessions={terminalSessions}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          closeSession={(id) => {
-            void closeSession(id);
-          }}
-        />
+        {(activeTab !== 'connections' || section === 'connections') && (
+          <SessionTabs
+            terminalSessions={terminalSessions}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            closeSession={(id) => {
+              void closeSession(id);
+            }}
+          />
+        )}
 
         <div className="flex-1 flex overflow-hidden">
-          {activeTab === 'connections' && (
-            <main className="flex-1 flex flex-col overflow-hidden">
-              <header className="border-b border-border px-8 py-6">
-                <h2 className="text-2xl font-semibold mt-1">{sectionTitle}</h2>
-              </header>
-              <div className="flex-1 overflow-auto p-8">
-                {section === 'connections' && (
-                  <ConnectionsPaneContainer
-                    terminalSessions={terminalSessions}
-                    connectToProfile={connectToProfile}
+          {activeTab === 'connections' && section === 'connections' && (
+            <ConnectionsPaneContainer
+              terminalSessions={terminalSessions}
+              connectToProfile={connectToProfile}
+            />
+          )}
+
+          {activeTab === 'connections' && section === 'vaults' && (
+            <VaultsPaneContainer />
+          )}
+
+          {activeTab === 'connections' && section !== 'connections' && section !== 'vaults' && (
+            <main className="flex-1 flex flex-col overflow-hidden min-w-0 bg-background">
+              {section !== 'preferences' && (
+                <header className="h-16 flex items-center px-8 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-10">
+                  <h1 className="text-lg font-medium text-white">{sectionTitle}</h1>
+                </header>
+              )}
+              <div className={`flex-1 overflow-auto ${isComingSoonSection || section === 'preferences' ? '' : 'p-8'}`}>
+                {section === 'preferences' && <SettingsPane />}
+
+                {section !== 'preferences' && section in comingSoonContent && (
+                  <ComingSoonPane
+                    {...comingSoonContent[section as keyof typeof comingSoonContent]}
+                    onBack={() => setSection('connections')}
                   />
                 )}
-
-                {section === 'keys' && <KeysPaneContainer />}
-
-                {section === 'settings' && <SettingsPane />}
-
-                {section === 'dithering-demo' && <DitheringLogoDemo />}
               </div>
             </main>
           )}

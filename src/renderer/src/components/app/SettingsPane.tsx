@@ -1,23 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useSettingsContext } from '../../context/SettingsContext';
 
 type AiProvider = 'openai' | 'anthropic';
-type SettingsCategory =
-  | 'overview'
-  | 'ai-providers'
-  | 'ai-defaults'
-  | 'host-key-policy'
-  | 'session-defaults'
-  | 'security'
-  | 'tooling';
+type PreferencesTab = 'models' | 'terminal' | 'general';
 
 const SettingsPane = () => {
   const { settings, updateSettings } = useSettingsContext();
-  const [activeCategory, setActiveCategory] = useState<SettingsCategory>('overview');
+  const [activeTab, setActiveTab] = useState<PreferencesTab>('models');
   const [aiKeyInputs, setAiKeyInputs] = useState<Record<AiProvider, string>>({
     openai: '',
     anthropic: ''
@@ -88,234 +78,325 @@ const SettingsPane = () => {
     }
   };
 
-  const categories = [
-    { id: 'ai-providers' as SettingsCategory, title: 'AI Providers', description: 'Store local API keys for OpenAI and Anthropic.' },
-    { id: 'ai-defaults' as SettingsCategory, title: 'AI Defaults', description: 'Default model and agent behaviors for new sessions.' },
-    { id: 'host-key-policy' as SettingsCategory, title: 'Host Key Policy', description: 'Choose strict or accept-new behavior for known hosts.' },
-    { id: 'session-defaults' as SettingsCategory, title: 'Session Defaults', description: 'Default shell size, fonts, and session timeouts.' },
-    { id: 'security' as SettingsCategory, title: 'Security', description: 'Lock screen, local encryption, and audit logs.' },
-    { id: 'tooling' as SettingsCategory, title: 'Tooling', description: 'Manage MCP tools and local integrations.' }
-  ];
-
-  const renderContent = () => {
-    if (activeCategory === 'overview') {
-      return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {categories.map((category) => (
-            <button
-              key={category.id}
-              onClick={() => setActiveCategory(category.id)}
-              className="flex flex-col items-start p-5 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors text-left group h-full"
-            >
-              <h4 className="text-sm font-medium mb-2">{category.title}</h4>
-              <p className="text-xs text-muted-foreground flex-1">{category.description}</p>
-              <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors mt-3 self-end" />
-            </button>
-          ))}
-        </div>
-      );
-    }
-
-    if (activeCategory === 'ai-providers') {
-      return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-3 p-5 rounded-lg border border-border bg-card">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="openai-key" className="text-sm font-medium">OpenAI API Key</Label>
-              <span className={`text-xs px-2 py-1 rounded-full ${
-                aiKeyStatus.openai.configured
-                  ? 'bg-emerald-500/20 text-emerald-400'
-                  : 'bg-muted text-muted-foreground'
-              }`}>
-                {aiKeyStatus.openai.configured ? 'Configured' : 'Not set'}
-              </span>
-            </div>
-            <Input
-              id="openai-key"
-              type="password"
-              placeholder={aiKeyStatus.openai.configured ? '••••••••••••••••' : 'sk-...'}
-              value={aiKeyInputs.openai}
-              onChange={(event) =>
-                setAiKeyInputs((prev) => ({ ...prev, openai: event.target.value }))
-              }
-            />
-            <div className="flex gap-2">
-              <Button size="sm" onClick={() => handleSaveKey('openai')}>
-                Save
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => handleClearKey('openai')}>
-                Clear
-              </Button>
-            </div>
-            {aiKeyStatus.openai.error && (
-              <p className="text-xs text-destructive">{aiKeyStatus.openai.error}</p>
-            )}
-          </div>
-
-          <div className="space-y-3 p-5 rounded-lg border border-border bg-card">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="anthropic-key" className="text-sm font-medium">Anthropic API Key</Label>
-              <span className={`text-xs px-2 py-1 rounded-full ${
-                aiKeyStatus.anthropic.configured
-                  ? 'bg-emerald-500/20 text-emerald-400'
-                  : 'bg-muted text-muted-foreground'
-              }`}>
-                {aiKeyStatus.anthropic.configured ? 'Configured' : 'Not set'}
-              </span>
-            </div>
-            <Input
-              id="anthropic-key"
-              type="password"
-              placeholder={aiKeyStatus.anthropic.configured ? '••••••••••••••••' : 'sk-ant-...'}
-              value={aiKeyInputs.anthropic}
-              onChange={(event) =>
-                setAiKeyInputs((prev) => ({ ...prev, anthropic: event.target.value }))
-              }
-            />
-            <div className="flex gap-2">
-              <Button size="sm" onClick={() => handleSaveKey('anthropic')}>
-                Save
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => handleClearKey('anthropic')}>
-                Clear
-              </Button>
-            </div>
-            {aiKeyStatus.anthropic.error && (
-              <p className="text-xs text-destructive">{aiKeyStatus.anthropic.error}</p>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    if (activeCategory === 'ai-defaults') {
-      return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="space-y-3 p-5 rounded-lg border border-border bg-card">
-            <Label htmlFor="default-model" className="text-sm font-medium">Default Model</Label>
-            <div className="relative">
-              <select
-                id="default-model"
-                className="appearance-none flex h-10 w-full rounded-md border border-input bg-background pl-3 pr-10 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-                value={settings.defaultModel}
-                onChange={(event) =>
-                  updateSettings({
-                    defaultModel: event.target.value as typeof settings.defaultModel
-                  })
-                }
-              >
-                <optgroup label="OpenAI">
-                  <option value="gpt-5.2">GPT-5.2</option>
-                  <option value="gpt-5-mini">GPT-5 Mini</option>
-                </optgroup>
-                <optgroup label="Anthropic">
-                  <option value="claude-opus-4.5">Claude Opus 4.5</option>
-                  <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
-                  <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
-                </optgroup>
-              </select>
-              <ChevronDown className="h-4 w-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-            </div>
-            <p className="text-xs text-muted-foreground">Used as the default for new sessions.</p>
-          </div>
-
-          <div className="space-y-3 p-5 rounded-lg border border-border bg-card">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Auto-approval</Label>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={settings.autoApprovalEnabled}
-                onClick={() => updateSettings({ autoApprovalEnabled: !settings.autoApprovalEnabled })}
-                className={`relative h-5 w-9 rounded-full border border-border transition-colors ${
-                  settings.autoApprovalEnabled ? 'bg-emerald-500/60' : 'bg-muted'
-                }`}
-              >
-                <span
-                  className={`absolute left-0.5 top-[1px] h-4 w-4 rounded-full bg-background transition-transform ${
-                    settings.autoApprovalEnabled ? 'translate-x-4' : ''
-                  }`}
-                />
-              </button>
-            </div>
-            <div className="relative">
-              <select
-                className="appearance-none flex h-10 w-full rounded-md border border-input bg-background pl-3 pr-10 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                value={settings.autoApprovalThreshold}
-                onChange={(event) =>
-                  updateSettings({
-                    autoApprovalThreshold: event.target.value as typeof settings.autoApprovalThreshold
-                  })
-                }
-                disabled={!settings.autoApprovalEnabled}
-              >
-                <option value="low">Low risk only</option>
-                <option value="medium">Medium risk or lower</option>
-                <option value="high">High risk (all)</option>
-              </select>
-              <ChevronDown className="h-4 w-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-            </div>
-            <p className="text-xs text-muted-foreground">Applies to new sessions unless overridden.</p>
-          </div>
-
-          <div className="space-y-3 p-5 rounded-lg border border-border bg-card">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Plan Panel</Label>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={settings.showPlanPanel}
-                onClick={() => updateSettings({ showPlanPanel: !settings.showPlanPanel })}
-                className={`relative h-5 w-9 rounded-full border border-border transition-colors ${
-                  settings.showPlanPanel ? 'bg-emerald-500/60' : 'bg-muted'
-                }`}
-              >
-                <span
-                  className={`absolute left-0.5 top-[1px] h-4 w-4 rounded-full bg-background transition-transform ${
-                    settings.showPlanPanel ? 'translate-x-4' : ''
-                  }`}
-                />
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground">Show or hide the plan panel in chat.</p>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex items-center justify-center h-64 text-center">
-        <p className="text-sm text-muted-foreground">Configuration panel coming soon</p>
-      </div>
-    );
-  };
-
-  const currentCategory = categories.find((cat) => cat.id === activeCategory);
-
   return (
     <div className="h-full flex flex-col">
-      <div className="px-6 pt-6 pb-4">
-        {activeCategory === 'overview' ? (
-          <>
-            <h3 className="text-lg font-semibold">Settings</h3>
-            <p className="text-sm text-muted-foreground mt-1">Local preferences for SSH, security, and UI</p>
-          </>
-        ) : (
-          <>
+      <header className="h-16 flex items-center justify-between px-8 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-10">
+        <div className="flex items-center space-x-6">
+          <h1 className="text-lg font-medium text-white">Preferences</h1>
+          <div className="h-4 w-px bg-border" />
+          <nav className="flex space-x-4">
             <button
-              onClick={() => setActiveCategory('overview')}
-              className="text-xs text-muted-foreground hover:text-foreground mb-2"
+              className={`text-sm font-medium pb-[22px] pt-[22px] ${
+                activeTab === 'models'
+                  ? 'text-white border-b-2 border-white'
+                  : 'text-neutral-500 hover:text-neutral-300 transition-colors'
+              }`}
+              onClick={() => setActiveTab('models')}
             >
-              ← Back to Settings
+              Models & Providers
             </button>
-            <h3 className="text-lg font-semibold">{currentCategory?.title}</h3>
-            <p className="text-sm text-muted-foreground mt-1">{currentCategory?.description}</p>
+            <button
+              className={`text-sm font-medium pb-[22px] pt-[22px] ${
+                activeTab === 'terminal'
+                  ? 'text-white border-b-2 border-white'
+                  : 'text-neutral-500 hover:text-neutral-300 transition-colors'
+              }`}
+              onClick={() => setActiveTab('terminal')}
+            >
+              Terminal
+            </button>
+            <button
+              className={`text-sm font-medium pb-[22px] pt-[22px] ${
+                activeTab === 'general'
+                  ? 'text-white border-b-2 border-white'
+                  : 'text-neutral-500 hover:text-neutral-300 transition-colors'
+              }`}
+              onClick={() => setActiveTab('general')}
+            >
+              General
+            </button>
+          </nav>
+        </div>
+        <div className="flex items-center space-x-4" aria-hidden="true" />
+      </header>
+
+      <div className="flex-1 overflow-y-auto p-8 max-w-7xl mx-auto w-full">
+        {activeTab === 'models' && (
+          <>
+            <div className="mb-8">
+              <div className="mt-4">
+                <h2 className="text-2xl font-medium text-white tracking-tight">AI Providers</h2>
+                <p className="text-sm text-neutral-500 mt-1">Store local API keys for OpenAI and Anthropic. Keys are stored encrypted.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+              <div className="bg-[#0a0a0a] rounded-xl border border-[#262626] p-6 shadow-subtle group hover:border-neutral-700 transition-colors">
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-medium text-white">OpenAI API Key</h3>
+                  </div>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-neutral-900 border border-neutral-800 text-neutral-500">
+                    {aiKeyStatus.openai.configured ? 'Configured' : 'Not set'}
+                  </span>
+                </div>
+                <div className="relative mb-6">
+                  <input
+                    className="w-full bg-[#050505] border border-neutral-800 rounded-lg px-4 py-2.5 text-sm text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-neutral-600 focus:ring-0 transition-all"
+                    placeholder={aiKeyStatus.openai.configured ? '••••••••••••••••' : 'sk-...'}
+                    type="password"
+                    value={aiKeyInputs.openai}
+                    onChange={(event) =>
+                      setAiKeyInputs((prev) => ({ ...prev, openai: event.target.value }))
+                    }
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    className="text-xs font-medium px-4 py-1.5 rounded transition-colors bg-white text-black hover:bg-neutral-200 shadow-glow"
+                    onClick={() => handleSaveKey('openai')}
+                  >
+                    Save
+                  </button>
+                  <button
+                    className="text-xs font-medium px-4 py-1.5 rounded transition-colors border border-neutral-700 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+                    onClick={() => handleClearKey('openai')}
+                  >
+                    Clear
+                  </button>
+                </div>
+                {aiKeyStatus.openai.error && (
+                  <p className="text-xs text-red-400 mt-3">{aiKeyStatus.openai.error}</p>
+                )}
+              </div>
+
+              <div className="bg-[#0a0a0a] rounded-xl border border-[#262626] p-6 shadow-subtle group hover:border-neutral-700 transition-colors">
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-medium text-white">Anthropic API Key</h3>
+                  </div>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-neutral-900 border border-neutral-800 text-neutral-500">
+                    {aiKeyStatus.anthropic.configured ? 'Configured' : 'Not set'}
+                  </span>
+                </div>
+                <div className="relative mb-6">
+                  <input
+                    className="w-full bg-[#050505] border border-neutral-800 rounded-lg px-4 py-2.5 text-sm text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-neutral-600 focus:ring-0 transition-all"
+                    placeholder={aiKeyStatus.anthropic.configured ? '••••••••••••••••' : 'sk-ant-...'}
+                    type="password"
+                    value={aiKeyInputs.anthropic}
+                    onChange={(event) =>
+                      setAiKeyInputs((prev) => ({ ...prev, anthropic: event.target.value }))
+                    }
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    className="text-xs font-medium px-4 py-1.5 rounded transition-colors bg-white text-black hover:bg-neutral-200 shadow-glow"
+                    onClick={() => handleSaveKey('anthropic')}
+                  >
+                    Save
+                  </button>
+                  <button
+                    className="text-xs font-medium px-4 py-1.5 rounded transition-colors border border-neutral-700 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+                    onClick={() => handleClearKey('anthropic')}
+                  >
+                    Clear
+                  </button>
+                </div>
+                {aiKeyStatus.anthropic.error && (
+                  <p className="text-xs text-red-400 mt-3">{aiKeyStatus.anthropic.error}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-[#262626] my-8" />
+
+            <div className="mb-10">
+              <div className="mb-6">
+                <h3 className="text-lg font-medium text-white">AI Defaults</h3>
+                <p className="text-sm text-neutral-500 mt-1">Default model and approval behavior for new sessions.</p>
+              </div>
+              <div className="bg-[#0a0a0a] rounded-xl border border-[#262626] divide-y divide-[#262626]">
+                <div className="p-6 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium text-white">Default Model</h4>
+                    <p className="text-xs text-neutral-500 mt-1">Used as the default for new sessions</p>
+                  </div>
+                  <div className="relative">
+                    <select
+                      className="bg-[#050505] border border-neutral-800 text-white text-xs rounded-lg px-3 py-1.5 focus:ring-0 focus:border-neutral-600"
+                      value={settings.defaultModel}
+                      onChange={(event) =>
+                        updateSettings({
+                          defaultModel: event.target.value as typeof settings.defaultModel
+                        })
+                      }
+                    >
+                      <optgroup label="OpenAI">
+                        <option value="gpt-5.2">GPT-5.2</option>
+                        <option value="gpt-5-mini">GPT-5 Mini</option>
+                      </optgroup>
+                      <optgroup label="Anthropic">
+                        <option value="claude-opus-4.5">Claude Opus 4.5</option>
+                        <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+                        <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
+                      </optgroup>
+                    </select>
+                    <ChevronDown className="h-3 w-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-500" />
+                  </div>
+                </div>
+                <div className="p-6 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium text-white">Auto-Approval</h4>
+                    <p className="text-xs text-neutral-500 mt-1">Automatically approve low-risk commands</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.autoApprovalEnabled}
+                    onClick={() => updateSettings({ autoApprovalEnabled: !settings.autoApprovalEnabled })}
+                    className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                      settings.autoApprovalEnabled ? 'bg-neutral-400' : 'bg-neutral-700'
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        settings.autoApprovalEnabled ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <div className="p-6 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium text-white">Auto-Approval Threshold</h4>
+                    <p className="text-xs text-neutral-500 mt-1">Max risk allowed for auto-approval</p>
+                  </div>
+                  <div className="relative">
+                    <select
+                      className="bg-[#050505] border border-neutral-800 text-white text-xs rounded-lg px-3 py-1.5 focus:ring-0 focus:border-neutral-600 disabled:opacity-50"
+                      value={settings.autoApprovalThreshold}
+                      onChange={(event) =>
+                        updateSettings({
+                          autoApprovalThreshold: event.target.value as typeof settings.autoApprovalThreshold
+                        })
+                      }
+                      disabled={!settings.autoApprovalEnabled}
+                    >
+                      <option value="low">Low risk only</option>
+                      <option value="medium">Medium risk or lower</option>
+                      <option value="high">High risk (all)</option>
+                    </select>
+                    <ChevronDown className="h-3 w-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-500" />
+                  </div>
+                </div>
+                <div className="p-6 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium text-white">Plan Panel</h4>
+                    <p className="text-xs text-neutral-500 mt-1">Show or hide the plan panel in chat</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.showPlanPanel}
+                    onClick={() => updateSettings({ showPlanPanel: !settings.showPlanPanel })}
+                    className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                      settings.showPlanPanel ? 'bg-neutral-400' : 'bg-neutral-700'
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        settings.showPlanPanel ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
           </>
         )}
-      </div>
 
-      <div className="flex-1 overflow-y-auto px-6 pb-6">
-        {renderContent()}
+        {activeTab === 'terminal' && (
+          <div className="mb-10">
+            <div className="mb-6">
+              <h3 className="text-lg font-medium text-white">Terminal Appearance</h3>
+              <p className="text-sm text-neutral-500 mt-1">Customize the look and feel of your SSH sessions.</p>
+            </div>
+            <div className="bg-[#0a0a0a] rounded-xl border border-[#262626] divide-y divide-[#262626] opacity-60">
+              <div className="p-6 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-medium text-white">Font Size</h4>
+                  <p className="text-xs text-neutral-500 mt-1">Default font size for new terminal windows</p>
+                </div>
+                <div className="flex items-center gap-3 bg-[#050505] rounded-lg p-1 border border-neutral-800">
+                  <button className="p-1 text-neutral-500" disabled>−</button>
+                  <span className="text-xs font-mono text-white w-8 text-center">13px</span>
+                  <button className="p-1 text-neutral-500" disabled>+</button>
+                </div>
+              </div>
+              <div className="p-6 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-medium text-white">Font Family</h4>
+                  <p className="text-xs text-neutral-500 mt-1">Must be a monospace font installed on your system</p>
+                </div>
+                <select className="bg-[#050505] border border-neutral-800 text-white text-xs rounded-lg px-3 py-1.5" disabled>
+                  <option>Fira Code</option>
+                </select>
+              </div>
+              <div className="p-6 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-medium text-white">Theme Override</h4>
+                  <p className="text-xs text-neutral-500 mt-1">Force a specific color scheme regardless of system settings</p>
+                </div>
+                <div className="flex gap-2">
+                  <button className="h-6 w-6 rounded-full bg-black border border-white ring-2 ring-offset-2 ring-offset-[#0a0a0a] ring-neutral-700" disabled />
+                  <button className="h-6 w-6 rounded-full bg-neutral-800 border border-transparent" disabled />
+                  <button className="h-6 w-6 rounded-full bg-[#1e1e1e] border border-transparent" disabled />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'general' && (
+          <div className="mb-10">
+            <div className="mb-6">
+              <h3 className="text-lg font-medium text-white">General</h3>
+              <p className="text-sm text-neutral-500 mt-1">Application defaults and behavior.</p>
+            </div>
+            <div className="bg-[#0a0a0a] rounded-xl border border-[#262626] divide-y divide-[#262626] opacity-60">
+              <div className="p-6 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-medium text-white">Default SSH User</h4>
+                  <p className="text-xs text-neutral-500 mt-1">Used when no username is specified in connection string</p>
+                </div>
+                <input
+                  className="w-48 bg-[#050505] border border-neutral-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-neutral-600"
+                  placeholder="root"
+                  type="text"
+                  disabled
+                />
+              </div>
+              <div className="p-6 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-medium text-white">Auto-Update</h4>
+                  <p className="text-xs text-neutral-500 mt-1">Automatically download and install updates</p>
+                </div>
+                <button
+                  className="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent bg-neutral-700"
+                  disabled
+                >
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none inline-block h-4 w-4 translate-x-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

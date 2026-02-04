@@ -6,36 +6,36 @@
 
 @layer base {
   :root {
-    /* Custom Wagterm Dark Theme */
-    --color-bg: #0f1115;
-    --color-bg-secondary: #181b21;
-    --color-text-primary: #f5f6f7;
-    --color-text-secondary: #b0b4bc;
-    --color-border: #2f333a;
-    --color-accent: #b0b4bc;
-    --color-accent-glow: rgba(176, 180, 188, 0.3);
+    /* Custom Wagterm Dark Theme — matches dashboard.html palette */
+    --color-bg: #050505;
+    --color-bg-secondary: #0a0a0a;
+    --color-text-primary: #ffffff;
+    --color-text-secondary: #a3a3a3;
+    --color-border: #262626;
+    --color-accent: #ffffff;
+    --color-accent-glow: rgba(255, 255, 255, 0.05);
     --color-white: #ffffff;
 
     /* Shadcn color mappings */
-    --background: 220 16% 6%;        /* #0f1115 */
-    --foreground: 220 10% 96%;       /* #f5f6f7 */
-    --card: 220 13% 11%;             /* #181b21 */
-    --card-foreground: 220 10% 96%;  /* #f5f6f7 */
-    --popover: 220 13% 11%;          /* #181b21 */
-    --popover-foreground: 220 10% 96%; /* #f5f6f7 */
-    --primary: 0 0% 100%;            /* #ffffff - White buttons */
-    --primary-foreground: 220 16% 6%; /* #0f1115 - Dark text on white */
-    --secondary: 220 13% 15%;        /* Slightly lighter than card */
-    --secondary-foreground: 220 10% 96%;
-    --muted: 220 13% 15%;
-    --muted-foreground: 220 9% 71%;  /* #b0b4bc */
-    --accent: 220 9% 71%;            /* #b0b4bc */
-    --accent-foreground: 220 16% 6%;
+    --background: 0 0% 2%;           /* #050505 */
+    --foreground: 0 0% 100%;         /* #ffffff */
+    --card: 0 0% 4%;                 /* #0a0a0a */
+    --card-foreground: 0 0% 100%;    /* #ffffff */
+    --popover: 0 0% 4%;              /* #0a0a0a */
+    --popover-foreground: 0 0% 100%; /* #ffffff */
+    --primary: 0 0% 100%;            /* #ffffff */
+    --primary-foreground: 0 0% 2%;   /* #050505 */
+    --secondary: 0 0% 8%;            /* slightly lighter than card */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 8%;
+    --muted-foreground: 0 0% 64%;    /* #a3a3a3 */
+    --accent: 0 0% 100%;             /* #ffffff */
+    --accent-foreground: 0 0% 2%;
     --destructive: 0 84% 60%;
-    --destructive-foreground: 220 10% 96%;
-    --border: 220 11% 21%;           /* #2f333a */
-    --input: 220 11% 21%;
-    --ring: 220 9% 71%;              /* #b0b4bc */
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 15%;              /* #262626 */
+    --input: 0 0% 15%;
+    --ring: 0 0% 64%;                /* #a3a3a3 */
     --radius: 0.75rem;
   }
 }

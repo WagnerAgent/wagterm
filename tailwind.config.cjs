@@ -15,8 +15,12 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        sans: ['Ubuntu', 'system-ui', 'sans-serif'],
-        mono: ['"Ubuntu Mono"', '"SFMono-Regular"', 'Menlo', 'monospace']
+        sans: ['Inter', 'sans-serif'],
+        mono: ['"Fira Code"', 'monospace']
+      },
+      boxShadow: {
+        subtle: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        glow: '0 0 20px -5px rgba(255, 255, 255, 0.05)'
       },
       colors: {
         border: 'hsl(var(--border))',
@@ -51,7 +55,8 @@ module.exports = {
         card: {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))'
-        }
+        },
+        surface: '#0a0a0a'
       },
       borderRadius: {
         lg: 'var(--radius)',
