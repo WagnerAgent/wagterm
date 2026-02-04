@@ -32,12 +32,12 @@ const ConnectionCard = ({ profile, isConnected, onConnect, onEdit, onDelete }: C
         <span
           className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-neutral-900/50 ${
             isConnected
-              ? 'border border-neutral-700 text-neutral-300'
+              ? 'border border-emerald-500/40 text-emerald-400'
               : 'border border-neutral-800 text-neutral-500'
           }`}
         >
           {isConnected && (
-            <span className="w-1.5 h-1.5 rounded-full bg-white mr-1.5 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse" />
           )}
           {status}
         </span>

@@ -219,10 +219,12 @@ const App = () => {
 
           {activeTab === 'connections' && section !== 'connections' && section !== 'vaults' && (
             <main className="flex-1 flex flex-col overflow-hidden min-w-0 bg-background">
-              <header className="h-16 flex items-center px-8 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-10">
-                <h1 className="text-lg font-medium text-white">{sectionTitle}</h1>
-              </header>
-              <div className={`flex-1 overflow-auto ${isComingSoonSection ? '' : 'p-8'}`}>
+              {section !== 'preferences' && (
+                <header className="h-16 flex items-center px-8 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-10">
+                  <h1 className="text-lg font-medium text-white">{sectionTitle}</h1>
+                </header>
+              )}
+              <div className={`flex-1 overflow-auto ${isComingSoonSection || section === 'preferences' ? '' : 'p-8'}`}>
                 {section === 'preferences' && <SettingsPane />}
 
                 {section !== 'preferences' && section in comingSoonContent && (

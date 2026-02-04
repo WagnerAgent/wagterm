@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, Search, PlusCircle } from 'lucide-react';
+import { Bell, Search, Plus } from 'lucide-react';
 
 type VaultsHeaderProps = {
   onNewSecret: () => void;
@@ -57,7 +57,7 @@ const VaultsHeader = ({ onNewSecret }: VaultsHeaderProps) => {
           className="inline-flex items-center px-3 py-1.5 border border-white/20 text-xs font-medium rounded-md text-white bg-white/5 hover:bg-white/10 transition-colors"
           onClick={onNewSecret}
         >
-          <PlusCircle className="h-4 w-4 mr-2" />
+          <Plus className="h-4 w-4 mr-2" />
           New Secret
         </button>
       </div>
