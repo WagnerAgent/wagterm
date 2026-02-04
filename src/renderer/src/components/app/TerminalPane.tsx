@@ -11,13 +11,15 @@ const TerminalPane = ({
   attachTerminal
 }: TerminalPaneProps) => {
   return (
-    <main className="flex-1 flex flex-col overflow-hidden border-r border-border">
-      <div className="px-4 py-2 border-b border-border">
-        <p className="text-xs font-mono text-muted-foreground">{session.status}</p>
+    <main className="flex-1 flex flex-col overflow-hidden border-r border-[#262626] bg-[#050505]">
+      <div className="px-4 py-2 border-b border-[#262626] bg-[#0a0a0a]">
+        <p className="text-xs font-mono text-neutral-500">{session.status}</p>
       </div>
 
-      <div className="flex-1 bg-black overflow-hidden">
-        <div className="h-full w-full wagterm-terminal" ref={(element) => attachTerminal(session.id, element)} />
+      <div className="flex-1 bg-[#050505] overflow-hidden shadow-glow">
+        <div className="h-full w-full p-4">
+          <div className="h-full w-full wagterm-terminal" ref={(element) => attachTerminal(session.id, element)} />
+        </div>
       </div>
     </main>
   );

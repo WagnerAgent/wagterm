@@ -340,139 +340,123 @@ const AssistantPane = ({
   }, [autoApproveEnabled, autoApproveLevel, handleApproveCommand, messages, session.id]);
 
   return (
-    <aside className="bg-card flex flex-col h-full">
-      {/* Tab Bar */}
-      <div className="p-3 border-b border-border">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab('chat')}
-            className={`p-2.5 rounded-lg transition-colors ${
-              activeTab === 'chat'
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
-            }`}
-            title="Chat"
-          >
-            <MessageSquare className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('search')}
-            className={`p-2.5 rounded-lg transition-colors ${
-              activeTab === 'search'
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
-            }`}
-            title="Terminal Search"
-          >
-            <Search className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('history')}
-            className={`p-2.5 rounded-lg transition-colors ${
-              activeTab === 'history'
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
-            }`}
-            title="Command History"
-          >
-            <Clock className="h-4 w-4" />
-          </button>
-        </div>
+    <aside className="bg-[#0a0a0a] border-l border-[#262626] flex flex-col h-full shrink-0 z-10 shadow-2xl">
+      {/* Tab Bar (match active_session1) */}
+      <div className="h-12 flex items-center px-4 border-b border-[#262626] bg-[#0a0a0a] select-none gap-4">
+        <button
+          type="button"
+          onClick={() => setActiveTab('chat')}
+          className={`p-1.5 rounded transition-colors ${
+            activeTab === 'chat' ? 'bg-white text-black' : 'hover:bg-white/5 text-[#737373] hover:text-white'
+          }`}
+          title="Chat"
+        >
+          <MessageSquare className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('search')}
+          className={`p-1.5 rounded transition-colors ${
+            activeTab === 'search' ? 'bg-white text-black' : 'hover:bg-white/5 text-[#737373] hover:text-white'
+          }`}
+          title="Terminal Search"
+        >
+          <Search className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('history')}
+          className={`p-1.5 rounded transition-colors ${
+            activeTab === 'history' ? 'bg-white text-black' : 'hover:bg-white/5 text-[#737373] hover:text-white'
+          }`}
+          title="Command History"
+        >
+          <Clock className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Tab Content */}
       {activeTab === 'chat' && (
         <>
-          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 space-y-6 font-mono text-xs bg-[#0a0a0a]">
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center px-4">
-                <div className="bg-muted/50 rounded-full p-4 mb-4">
-                  <TerminalIcon className="h-8 w-8 text-muted-foreground" />
+              <div className="flex flex-col items-center justify-center h-full text-center px-6">
+                <div className="w-12 h-12 bg-[#171717] rounded-full flex items-center justify-center mb-4 text-[#737373] group">
+                  <TerminalIcon className="h-5 w-5 text-[#737373]/80" />
                 </div>
-                <h4 className="text-sm font-semibold mb-2">Start a conversation</h4>
-                <p className="text-xs text-muted-foreground">
+                <h4 className="text-sm font-bold text-white mb-2">Start a conversation</h4>
+                <p className="text-xs text-[#737373] max-w-[240px]">
                   Ask me to help you with commands, explain what's happening, or generate scripts for your tasks.
                 </p>
               </div>
             ) : (
               <>
                 {messages.map((msg, idx) => (
-                  <div key={msg.id ?? idx} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div key={msg.id ?? idx} className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-[#737373] mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-white font-bold">&gt; {msg.role === 'user' ? 'User' : 'Agent'}</span>
+                        {msg.kind === 'proposal' && msg.proposal?.status === 'pending' && (
+                          <span className="px-1 rounded bg-blue-900/20 text-blue-400 text-[9px] border border-blue-900/30 uppercase">
+                            Pending
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
                     {msg.kind === 'proposal' && msg.proposal ? (
-                      <div className="rounded-lg border border-border bg-card p-3 space-y-2 max-w-[85%]">
-                        <div className="flex items-start justify-between gap-2">
-                          <code className="text-xs text-foreground font-mono break-all">{msg.proposal.command}</code>
-                          <div className="flex items-center gap-2">
-                            {msg.proposal.interactive && (
-                              <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase bg-sky-500/20 text-sky-200">
-                                interactive
-                              </span>
-                            )}
-                            {msg.proposal.risk && (
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                                  msg.proposal.risk === 'high'
-                                    ? 'bg-red-500/20 text-red-200'
-                                    : msg.proposal.risk === 'medium'
-                                      ? 'bg-yellow-500/20 text-yellow-200'
-                                      : 'bg-emerald-500/20 text-emerald-200'
-                                }`}
+                      <div className="text-[#737373] pl-3 border-l border-[#262626] ml-1 space-y-3">
+                        {msg.proposal.rationale && (
+                          <p className="text-[#737373]/80 text-[11px]">{msg.proposal.rationale}</p>
+                        )}
+                        <div className="bg-black border border-[#262626] mt-2 overflow-hidden">
+                          <div className="flex justify-between items-center px-2 py-1.5 bg-white/5 border-b border-[#262626]">
+                            <span className="text-[10px] uppercase font-bold text-[#737373]">Planned Execution</span>
+                            <span className="text-[10px] text-[#737373] font-mono">
+                              {msg.proposal.risk ? `risk:${msg.proposal.risk}` : 'proposal'}
+                            </span>
+                          </div>
+                          <div className="p-2 space-y-2">
+                            <div className="text-[#737373] text-[11px]">Command</div>
+                            <div className="text-white bg-[#0a0a0a] p-2 border border-[#262626]/50 text-[10px] font-mono break-all">
+                              {msg.proposal.command}
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                              <button
+                                className="bg-white text-black hover:bg-gray-200 text-[10px] font-bold py-1.5 px-2 uppercase transition-colors flex items-center justify-center gap-1"
+                                onClick={() => handleApproveCommand(session.id, msg.proposal!.id)}
+                                disabled={msg.proposal.status !== 'pending'}
                               >
-                                {msg.proposal.risk}
-                              </span>
+                                Approve
+                              </button>
+                              <button
+                                className="border border-[#262626] hover:bg-white/5 text-[#e5e5e5] text-[10px] py-1.5 px-2 uppercase transition-colors"
+                                onClick={() => handleRejectCommand(session.id, msg.proposal!.id)}
+                                disabled={msg.proposal.status !== 'pending'}
+                              >
+                                Reject
+                              </button>
+                            </div>
+                            {msg.proposal.interactive && msg.proposal.status === 'approved' && (
+                              <button
+                                className="w-full border border-[#262626] hover:bg-white/5 text-[#e5e5e5] text-[10px] py-1.5 px-2 uppercase transition-colors"
+                                onClick={() => handleConfirmCommand(session.id, msg.proposal!.id)}
+                              >
+                                Continue
+                              </button>
+                            )}
+                            {msg.proposal.statusMessage && (
+                              <div className="text-[11px] text-[#737373]">{msg.proposal.statusMessage}</div>
                             )}
                           </div>
                         </div>
-
-                        {msg.proposal.rationale && <p className="text-xs text-muted-foreground">{msg.proposal.rationale}</p>}
-
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => handleApproveCommand(session.id, msg.proposal!.id)}
-                            disabled={msg.proposal.status !== 'pending'}
-                          >
-                            Approve
-                          </Button>
-                          {msg.proposal.interactive && msg.proposal.status === 'approved' && (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => handleConfirmCommand(session.id, msg.proposal!.id)}
-                            >
-                              Continue
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleRejectCommand(session.id, msg.proposal!.id)}
-                            disabled={msg.proposal.status !== 'pending'}
-                          >
-                            Reject
-                          </Button>
-                          {msg.proposal.status !== 'pending' && (
-                            <span className="text-[11px] uppercase text-muted-foreground">{msg.proposal.status}</span>
-                          )}
-                        </div>
-
-                        {msg.proposal.statusMessage && (
-                          <div className="text-[11px] text-muted-foreground">{msg.proposal.statusMessage}</div>
-                        )}
                       </div>
                     ) : (
-                      <div
-                        className={`rounded-lg px-4 py-2 max-w-[85%] ${
-                          msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
-                        }`}
-                      >
+                      <div className="text-[#737373] pl-3 border-l border-[#262626] ml-1">
                         {msg.role === 'assistant' && msg.content ? (
-                          <div className="space-y-2">{renderMarkdown(msg.content)}</div>
+                          <div className="space-y-2 text-[#e5e5e5]">{renderMarkdown(msg.content)}</div>
                         ) : (
-                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                          <p className="text-[#e5e5e5] whitespace-pre-wrap text-[11px]">{msg.content}</p>
                         )}
                       </div>
                     )}
@@ -583,13 +567,13 @@ const AssistantPane = ({
 
       {/* Chat input area - only show when chat tab is active */}
       {activeTab === 'chat' && (
-        <div className="p-4 border-t border-border">
+        <div className="p-3 bg-[#0a0a0a] border-t border-[#262626]">
           {settings.showPlanPanel && planSteps.length > 0 && (
-          <div className="rounded-lg border border-border bg-card p-3 mb-3 space-y-2">
+          <div className="border border-[#262626] bg-[#0a0a0a] p-3 mb-3 space-y-2">
             <button
               type="button"
               onClick={() => setPlanExpanded((prev) => !prev)}
-              className="w-full flex items-center justify-between text-xs font-semibold uppercase text-muted-foreground"
+              className="w-full flex items-center justify-between text-[10px] font-semibold uppercase text-[#737373]"
             >
               Plan
               <ChevronDown
@@ -608,179 +592,180 @@ const AssistantPane = ({
                             ? 'bg-yellow-400'
                             : step.status === 'blocked'
                               ? 'bg-red-400'
-                              : 'bg-muted-foreground/60'
+                              : 'bg-[#737373]/60'
                       }`}
                     />
-                    <span className="text-foreground">{step.description}</span>
+                    <span className="text-[#e5e5e5]">{step.description}</span>
                   </li>
                 ))}
               </ul>
             )}
           </div>
         )}
-        <div className="bg-muted/50 rounded-xl p-4 border border-border">
-          <textarea
-            placeholder="Ask anything"
-            className="w-full border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none px-0 py-0 text-sm text-foreground resize-none min-h-[32px] max-h-32 overflow-y-auto mb-3"
-            value={conversationInput}
-            onChange={(event) => setConversationInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                handleSendConversation({ maxSteps: maxStepsMultiplier * 8 });
-              }
-            }}
-            rows={1}
-            onInput={(event) => {
-              const target = event.target as HTMLTextAreaElement;
-              target.style.height = 'auto';
-              target.style.height = `${target.scrollHeight}px`;
-            }}
-          />
+          <div className="border border-[#262626] rounded-lg bg-[#171717]/20 p-3 space-y-3 focus-within:border-[#737373] transition-colors">
+            <textarea
+              placeholder="Ask anything"
+              className="w-full bg-transparent border-none text-sm text-[#e5e5e5] focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none p-0 resize-none h-5 leading-relaxed placeholder:text-[#737373]/40 font-mono"
+              value={conversationInput}
+              onChange={(event) => setConversationInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  handleSendConversation({ maxSteps: maxStepsMultiplier * 8 });
+                }
+              }}
+              rows={1}
+              onInput={(event) => {
+                const target = event.target as HTMLTextAreaElement;
+                target.style.height = 'auto';
+                target.style.height = `${target.scrollHeight}px`;
+              }}
+            />
 
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-4 min-w-0 flex-1">
-              <div className="relative" ref={autoApproveMenuRef}>
-                <button
-                  type="button"
-                  className="appearance-none bg-transparent text-xs text-muted-foreground pr-4 py-1 cursor-pointer focus:outline-none hover:text-foreground transition-colors whitespace-nowrap"
-                  onClick={() => setAutoApproveMenuOpen((prev) => !prev)}
-                  aria-expanded={autoApproveMenuOpen}
-                >
-                  Auto-approve{' '}
-                  {autoApproveEnabled
-                    ? autoApproveLevel === 'high'
-                      ? 'High'
-                      : autoApproveLevel === 'medium'
-                        ? 'Medium'
-                        : 'Low'
-                    : 'Off'}
-                </button>
-                <ChevronDown className="h-3 w-3 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-                {autoApproveMenuOpen && (
-                  <div className="absolute right-0 bottom-full mb-2 w-56 rounded-lg border border-border bg-card shadow-lg p-2 text-xs text-foreground">
-                    <div className="flex items-center justify-between px-2 py-1">
-                      <span className="text-muted-foreground uppercase text-[11px]">Auto-approve</span>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={autoApproveEnabled}
-                        onClick={() => {
-                          autoApproveTouchedRef.current = true;
-                          setAutoApproveEnabled((prev) => !prev);
-                        }}
-                        className={`relative h-5 w-9 rounded-full border border-border transition-colors ${
-                          autoApproveEnabled ? 'bg-emerald-500/60' : 'bg-muted'
-                        }`}
-                      >
-                        <span
-                          className={`absolute left-0.5 top-[1px] h-4 w-4 rounded-full bg-background transition-transform ${
-                            autoApproveEnabled ? 'translate-x-4' : ''
+            <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center gap-2">
+                <div className="relative" ref={autoApproveMenuRef}>
+                  <button
+                    type="button"
+                    className="h-5 text-[10px] text-[#737373] hover:text-white inline-flex items-center gap-1 transition-colors leading-none"
+                    onClick={() => setAutoApproveMenuOpen((prev) => !prev)}
+                    aria-expanded={autoApproveMenuOpen}
+                  >
+                    Auto-approve <span className="text-white">
+                      {autoApproveEnabled
+                        ? autoApproveLevel === 'high'
+                          ? 'High'
+                          : autoApproveLevel === 'medium'
+                            ? 'Medium'
+                            : 'Low'
+                        : 'Off'}
+                    </span>
+                    <ChevronDown className="h-3 w-3 text-[#737373]" />
+                  </button>
+                  {autoApproveMenuOpen && (
+                    <div className="absolute left-0 bottom-full mb-2 w-56 rounded-lg border border-[#262626] bg-[#0a0a0a] shadow-lg p-2 text-xs text-[#e5e5e5]">
+                      <div className="flex items-center justify-between px-2 py-1">
+                        <span className="text-[#737373] uppercase text-[11px]">Auto-approve</span>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={autoApproveEnabled}
+                          onClick={() => {
+                            autoApproveTouchedRef.current = true;
+                            setAutoApproveEnabled((prev) => !prev);
+                          }}
+                          className={`relative h-5 w-9 rounded-full border border-[#262626] transition-colors ${
+                            autoApproveEnabled ? 'bg-emerald-500/60' : 'bg-black'
                           }`}
-                        />
-                      </button>
+                        >
+                          <span
+                            className={`absolute left-0.5 top-[1px] h-4 w-4 rounded-full bg-[#050505] transition-transform ${
+                              autoApproveEnabled ? 'translate-x-4' : ''
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        <button
+                          type="button"
+                          disabled={!autoApproveEnabled}
+                          onClick={() => {
+                            autoApproveTouchedRef.current = true;
+                            setAutoApproveLevel('low');
+                          }}
+                          className={`w-full flex items-center justify-between rounded-md px-2 py-1 ${
+                            autoApproveLevel === 'low' ? 'bg-white/10' : 'hover:bg-white/5'
+                          } ${autoApproveEnabled ? '' : 'opacity-50 cursor-not-allowed'}`}
+                        >
+                          <span>Low risk only</span>
+                          {autoApproveLevel === 'low' && autoApproveEnabled && (
+                            <span className="text-[10px] uppercase text-[#737373]">Selected</span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!autoApproveEnabled}
+                          onClick={() => {
+                            autoApproveTouchedRef.current = true;
+                            setAutoApproveLevel('medium');
+                          }}
+                          className={`w-full flex items-center justify-between rounded-md px-2 py-1 ${
+                            autoApproveLevel === 'medium' ? 'bg-white/10' : 'hover:bg-white/5'
+                          } ${autoApproveEnabled ? '' : 'opacity-50 cursor-not-allowed'}`}
+                        >
+                          <span>Medium risk or lower</span>
+                          {autoApproveLevel === 'medium' && autoApproveEnabled && (
+                            <span className="text-[10px] uppercase text-[#737373]">Selected</span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!autoApproveEnabled}
+                          onClick={() => {
+                            autoApproveTouchedRef.current = true;
+                            setAutoApproveLevel('high');
+                          }}
+                          className={`w-full flex items-center justify-between rounded-md px-2 py-1 ${
+                            autoApproveLevel === 'high' ? 'bg-white/10' : 'hover:bg-white/5'
+                          } ${autoApproveEnabled ? '' : 'opacity-50 cursor-not-allowed'}`}
+                        >
+                          <span>High risk (all)</span>
+                          {autoApproveLevel === 'high' && autoApproveEnabled && (
+                            <span className="text-[10px] uppercase text-[#737373]">Selected</span>
+                          )}
+                        </button>
+                      </div>
                     </div>
-                    <div className="mt-2 space-y-1">
-                      <button
-                        type="button"
-                        disabled={!autoApproveEnabled}
-                        onClick={() => {
-                          autoApproveTouchedRef.current = true;
-                          setAutoApproveLevel('low');
-                        }}
-                        className={`w-full flex items-center justify-between rounded-md px-2 py-1 ${
-                          autoApproveLevel === 'low' ? 'bg-muted' : 'hover:bg-muted/60'
-                        } ${autoApproveEnabled ? '' : 'opacity-50 cursor-not-allowed'}`}
-                      >
-                        <span>Low risk only</span>
-                        {autoApproveLevel === 'low' && autoApproveEnabled && (
-                          <span className="text-[10px] uppercase text-muted-foreground">Selected</span>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!autoApproveEnabled}
-                        onClick={() => {
-                          autoApproveTouchedRef.current = true;
-                          setAutoApproveLevel('medium');
-                        }}
-                        className={`w-full flex items-center justify-between rounded-md px-2 py-1 ${
-                          autoApproveLevel === 'medium' ? 'bg-muted' : 'hover:bg-muted/60'
-                        } ${autoApproveEnabled ? '' : 'opacity-50 cursor-not-allowed'}`}
-                      >
-                        <span>Medium risk or lower</span>
-                        {autoApproveLevel === 'medium' && autoApproveEnabled && (
-                          <span className="text-[10px] uppercase text-muted-foreground">Selected</span>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!autoApproveEnabled}
-                        onClick={() => {
-                          autoApproveTouchedRef.current = true;
-                          setAutoApproveLevel('high');
-                        }}
-                        className={`w-full flex items-center justify-between rounded-md px-2 py-1 ${
-                          autoApproveLevel === 'high' ? 'bg-muted' : 'hover:bg-muted/60'
-                        } ${autoApproveEnabled ? '' : 'opacity-50 cursor-not-allowed'}`}
-                      >
-                        <span>High risk (all)</span>
-                        {autoApproveLevel === 'high' && autoApproveEnabled && (
-                          <span className="text-[10px] uppercase text-muted-foreground">Selected</span>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
+
+                <div className="relative">
+                  <select
+                    className="h-5 text-[10px] text-[#737373] hover:text-white bg-transparent appearance-none pr-4 cursor-pointer transition-colors leading-none py-0.5 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    value={maxStepsMultiplier}
+                    onChange={(event) => setMaxStepsMultiplier(Number(event.target.value))}
+                  >
+                    <option value={1}>Steps 1x</option>
+                    <option value={2}>Steps 2x</option>
+                    <option value={3}>Steps 3x</option>
+                  </select>
+                  <ChevronDown className="h-3 w-3 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-[#737373]" />
+                </div>
+
+                <div className="relative max-w-[120px] min-w-0">
+                  <select
+                    className="h-5 text-[10px] text-[#737373] hover:text-white bg-transparent appearance-none pr-4 cursor-pointer transition-colors w-full truncate leading-none py-0.5 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    value={selectedModelValue}
+                    onChange={(event) =>
+                      setSelectedModel(
+                        event.target.value as 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5'
+                      )
+                    }
+                  >
+                    <optgroup label="OpenAI">
+                      <option value="gpt-5.2">GPT-5.2</option>
+                      <option value="gpt-5-mini">GPT-5 Mini</option>
+                    </optgroup>
+                    <optgroup label="Anthropic">
+                      <option value="claude-opus-4.5">Opus 4.5</option>
+                      <option value="claude-sonnet-4.5">Sonnet 4.5</option>
+                      <option value="claude-haiku-4.5">Haiku 4.5</option>
+                    </optgroup>
+                  </select>
+                  <ChevronDown className="h-3 w-3 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-[#737373]" />
+                </div>
               </div>
 
-              <div className="relative">
-                <select
-                  className="appearance-none bg-transparent text-xs text-muted-foreground pr-5 py-1 cursor-pointer focus:outline-none hover:text-foreground transition-colors"
-                  value={maxStepsMultiplier}
-                  onChange={(event) => setMaxStepsMultiplier(Number(event.target.value))}
-                >
-                  <option value={1}>Steps 1x</option>
-                  <option value={2}>Steps 2x</option>
-                  <option value={3}>Steps 3x</option>
-                </select>
-                <ChevronDown className="h-3 w-3 absolute right-0.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-              </div>
-
-              <div className="relative max-w-[120px] min-w-0">
-                <select
-                  className="appearance-none bg-transparent text-xs text-muted-foreground pr-5 py-1 cursor-pointer focus:outline-none hover:text-foreground transition-colors w-full truncate"
-                  value={selectedModelValue}
-                  onChange={(event) =>
-                    setSelectedModel(
-                      event.target.value as 'gpt-5.2' | 'gpt-5-mini' | 'claude-sonnet-4.5' | 'claude-opus-4.5' | 'claude-haiku-4.5'
-                    )
-                  }
-                >
-                  <optgroup label="OpenAI">
-                    <option value="gpt-5.2">GPT-5.2</option>
-                    <option value="gpt-5-mini">GPT-5 Mini</option>
-                  </optgroup>
-                  <optgroup label="Anthropic">
-                    <option value="claude-opus-4.5">Opus 4.5</option>
-                    <option value="claude-sonnet-4.5">Sonnet 4.5</option>
-                    <option value="claude-haiku-4.5">Haiku 4.5</option>
-                  </optgroup>
-                </select>
-                <ChevronDown className="h-3 w-3 absolute right-0.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-              </div>
+              <Button
+                onClick={() => handleSendConversation({ maxSteps: maxStepsMultiplier * 8 })}
+                size="icon"
+                className="h-6 w-6 flex items-center justify-center rounded-full bg-white/10 hover:bg-white text-black hover:text-black transition-all"
+                disabled={!conversationInput.trim()}
+              >
+                <ArrowRight className="h-3 w-3 text-white hover:text-black" />
+              </Button>
             </div>
-
-            <Button
-              onClick={() => handleSendConversation({ maxSteps: maxStepsMultiplier * 8 })}
-              size="icon"
-              className="h-8 w-8 rounded-lg flex-shrink-0"
-              disabled={!conversationInput.trim()}
-            >
-              <ArrowRight className="h-4 w-4" />
-            </Button>
           </div>
-        </div>
         </div>
       )}
     </aside>

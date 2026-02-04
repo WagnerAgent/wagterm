@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Server, KeyRound, FolderOpen, Bot, SlidersHorizontal, History, Settings } from 'lucide-react';
 import AssistantPane from './components/app/AssistantPane';
 import ConnectionsPaneContainer from './components/app/ConnectionsPaneContainer';
+import ComingSoonPane from './components/app/ComingSoonPane';
 import VaultsPaneContainer from './components/app/VaultsPaneContainer';
 import SessionTabs from './components/app/SessionTabs';
 import SettingsPane from './components/app/SettingsPane';
@@ -11,6 +12,40 @@ import type { SectionKey, TerminalSession } from './components/app/types';
 import { useAssistantChat } from './hooks/useAssistantChat';
 import { useSshSessions } from './hooks/useSshSessions';
 import WagtermIcon from './assets/wagterm_icon.svg';
+
+const comingSoonContent: Record<
+  'files' | 'ai-agents' | 'agent-settings' | 'runbooks',
+  { title: string; headline: string; description: string; icon: React.ComponentType<{ className?: string }> }
+> = {
+  files: {
+    title: 'Files System',
+    headline: 'Secure File Operations',
+    description:
+      'Agentic file management and automated MCP syncing across your infrastructure. Securely transfer, edit, and audit file operations with AI oversight.',
+    icon: FolderOpen
+  },
+  'ai-agents': {
+    title: 'AI Agents',
+    headline: 'Orchestrated Automation',
+    description:
+      'Deploy specialized agents that collaborate on tasks, coordinate actions, and maintain context across long-running operations with built-in guardrails.',
+    icon: Bot
+  },
+  'agent-settings': {
+    title: 'Agent Settings',
+    headline: 'Precision Controls',
+    description:
+      'Tune model behavior, safety thresholds, and execution preferences to match your team workflows and compliance requirements.',
+    icon: SlidersHorizontal
+  },
+  runbooks: {
+    title: 'Runbooks',
+    headline: 'Repeatable Playbooks',
+    description:
+      'Codify operational procedures into reusable runbooks with step-by-step automation, approvals, and audit trails.',
+    icon: History
+  }
+};
 
 const sections: Array<{ id: SectionKey; label: string; icon: React.ReactNode }> = [
   { id: 'connections', label: 'Connections', icon: <Server className="h-5 w-5" /> },
@@ -138,6 +173,8 @@ const App = () => {
     return current?.label ?? 'Connections';
   }, [section]);
 
+  const isComingSoonSection = section in comingSoonContent;
+
   if (showSplash) {
     return (
       <div
@@ -185,23 +222,14 @@ const App = () => {
               <header className="h-16 flex items-center px-8 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-10">
                 <h1 className="text-lg font-medium text-white">{sectionTitle}</h1>
               </header>
-              <div className="flex-1 overflow-auto p-8">
+              <div className={`flex-1 overflow-auto ${isComingSoonSection ? '' : 'p-8'}`}>
                 {section === 'preferences' && <SettingsPane />}
 
-                {section === 'files' && (
-                  <div className="text-neutral-500 text-sm">Files — coming soon</div>
-                )}
-
-                {section === 'ai-agents' && (
-                  <div className="text-neutral-500 text-sm">AI Agents — coming soon</div>
-                )}
-
-                {section === 'agent-settings' && (
-                  <div className="text-neutral-500 text-sm">Agent Settings — coming soon</div>
-                )}
-
-                {section === 'runbooks' && (
-                  <div className="text-neutral-500 text-sm">Runbooks — coming soon</div>
+                {section !== 'preferences' && section in comingSoonContent && (
+                  <ComingSoonPane
+                    {...comingSoonContent[section as keyof typeof comingSoonContent]}
+                    onBack={() => setSection('connections')}
+                  />
                 )}
               </div>
             </main>

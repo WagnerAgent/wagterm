@@ -271,10 +271,20 @@ export const useSshSessions = ({ onSessionStart, onSessionClose }: UseSshSession
     if (terminal) {
       const fitAddon = fitAddonsById.current.get(activeTab);
       if (fitAddon) {
-        fitAddon.fit();
+        requestAnimationFrame(() => {
+          fitAddon.fit();
+          requestAnimationFrame(() => fitAddon.fit());
+        });
       }
-      terminal.refresh(0, terminal.rows - 1);
-      terminal.focus();
+      requestAnimationFrame(() => {
+        terminal.refresh(0, terminal.rows - 1);
+        terminal.focus();
+        void window.wagterm.sshSession.resize({
+          sessionId: activeTab,
+          cols: terminal.cols,
+          rows: terminal.rows
+        });
+      });
     }
   }, [activeTab]);
 
