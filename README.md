@@ -50,12 +50,26 @@ Wagterm is an open-source desktop SSH client with built-in AI assistance. Connec
 - Node.js 18+ (20 recommended)
 - npm 9+
 
-### Install and Run
+### Run in Dev Mode
 
 ```bash
 npm install
 npm run dev
 ```
+
+### Build Local Installers
+
+```bash
+npm install
+npm run build
+npm run rebuild:electron
+npm run package
+```
+
+Artifacts are placed in `release/`.
+
+> **macOS note (unsigned builds):** If Gatekeeper blocks the app, right-click → Open once, or run:
+> `xattr -dr com.apple.quarantine /Applications/Wagterm.app`
 
 ## Scripts
 
@@ -65,7 +79,7 @@ npm run dev
 | `npm run build` | Build main/preload/renderer bundles |
 | `npm run preview` | Preview the renderer build |
 | `npm run lint` | Run ESLint |
-| `npm run rebuild` | Rebuild native dependencies |
+| `npm run rebuild:electron` | Rebuild native dependencies |
 | `npm run package` | Build installers via `electron-builder` |
 
 ## Packaging
