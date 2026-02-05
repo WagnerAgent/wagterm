@@ -22,9 +22,7 @@
 
 ---
 
-<p align="center">
-  <video src=".github/assets/wagterm-final-demo.mp4" width="800" controls muted playsinline></video>
-</p>
+https://github.com/user-attachments/assets/d7e793df-5c6a-4f09-b2cf-81045259f26e
 
 ---
 
