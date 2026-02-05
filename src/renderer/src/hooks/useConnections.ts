@@ -27,46 +27,6 @@ type UseConnectionsOptions = {
   keys: KeyRecord[];
 };
 
-const buildDemoConnections = (count: number): ConnectionProfile[] => {
-  const roles = ['edge', 'api', 'worker', 'db', 'cache', 'batch'];
-  const regions = ['nyc', 'sfo', 'ams', 'fra', 'lon', 'sin'];
-  const usernames = ['ubuntu', 'ec2-user', 'root', 'admin'];
-
-  return Array.from({ length: count }, (_, index) => {
-    const role = roles[index % roles.length];
-    const region = regions[index % regions.length];
-    const ordinal = String((index % 12) + 1).padStart(2, '0');
-    const authMethod = index % 4 === 0 ? 'password' : 'pem';
-    const host = `${role}-${region}-${ordinal}.example.internal`;
-    const name = `${role.toUpperCase()} ${region.toUpperCase()}-${ordinal}`;
-    const jumpEnabled = index % 5 === 0;
-
-    return {
-      id: `demo-${role}-${region}-${ordinal}-${index}`,
-      name,
-      host,
-      port: 22,
-      username: usernames[index % usernames.length],
-      authMethod,
-      credentialId: authMethod === 'pem' ? 'demo-key' : undefined,
-      hostKeyPolicy: index % 3 === 0 ? 'accept-new' : 'strict',
-      knownHostsPath: undefined,
-      jumpHost: jumpEnabled
-        ? {
-            host: `bastion-${region}.example.internal`,
-            port: 22,
-            username: 'bastion',
-            authMethod: 'pem',
-            credentialId: 'demo-key',
-            hostKeyPolicy: 'accept-new'
-          }
-        : undefined
-    };
-  });
-};
-
-const demoConnections = import.meta.env.DEV ? buildDemoConnections(24) : [];
-
 export const useConnections = ({ keys }: UseConnectionsOptions) => {
   const [connections, setConnections] = useState<ConnectionProfile[]>([]);
   const [connectionSheetOpen, setConnectionSheetOpen] = useState(false);
@@ -78,7 +38,7 @@ export const useConnections = ({ keys }: UseConnectionsOptions) => {
 
   const loadConnections = useCallback(async () => {
     const response = await window.wagterm.storage.listConnections();
-    setConnections([...response.profiles, ...demoConnections]);
+    setConnections(response.profiles);
   }, []);
 
   const resetConnectionForm = () => {

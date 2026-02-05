@@ -11,7 +11,6 @@ type ConnectionCardProps = {
 };
 
 const ConnectionCard = ({ profile, isConnected, onConnect, onEdit, onDelete }: ConnectionCardProps) => {
-  const isDemo = profile.id.startsWith('demo-');
   const status = isConnected ? 'Live' : 'Idle';
 
   return (
@@ -72,11 +71,6 @@ const ConnectionCard = ({ profile, isConnected, onConnect, onEdit, onDelete }: C
       {/* Footer */}
       <div className="mt-6 pt-4 border-t border-neutral-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {isDemo && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] border border-neutral-800 text-neutral-400 font-mono tracking-wide uppercase">
-              Sample
-            </span>
-          )}
           {profile.jumpHost && (
             <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] border border-neutral-800 text-neutral-400 font-mono tracking-wide uppercase">
               Jump Host
@@ -84,35 +78,28 @@ const ConnectionCard = ({ profile, isConnected, onConnect, onEdit, onDelete }: C
           )}
         </div>
         <div className="flex items-center gap-2">
-          {!isDemo && (
-            <>
-              <button
-                type="button"
-                className="p-1 rounded text-neutral-500 hover:text-white transition-colors"
-                onClick={onEdit}
-              >
-                <Edit2 className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                className="p-1 rounded text-neutral-500 hover:text-white transition-colors"
-                onClick={onDelete}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            className="p-1 rounded text-neutral-500 hover:text-white transition-colors"
+            onClick={onEdit}
+          >
+            <Edit2 className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            className="p-1 rounded text-neutral-500 hover:text-white transition-colors"
+            onClick={onDelete}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
           <button
             type="button"
             className={`text-xs font-medium px-4 py-1.5 rounded transition-colors ${
               isConnected
                 ? 'border border-neutral-700 text-neutral-300 hover:bg-neutral-800 hover:text-white'
-                : isDemo
-                  ? 'border border-neutral-800 text-neutral-600 cursor-not-allowed'
-                  : 'bg-white text-black hover:bg-neutral-200 shadow-glow'
+                : 'bg-white text-black hover:bg-neutral-200 shadow-glow'
             }`}
-            onClick={isDemo ? undefined : onConnect}
-            disabled={isDemo}
+            onClick={onConnect}
           >
             Connect
           </button>

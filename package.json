@@ -70,7 +70,11 @@
       "target": [
         "dmg"
       ],
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icons/icon.icns"
+    },
+    "dmg": {
+      "icon": "assets/icons/icon.icns"
     },
     "win": {
       "target": [
