@@ -23,7 +23,7 @@
 ---
 
 <p align="center">
-  <img src=".github/assets/wagterm_main_view.png" alt="Wagterm Screenshot" width="800" />
+  <video src=".github/assets/wagterm-final-demo.mp4" width="800" controls muted playsinline></video>
 </p>
 
 ---
@@ -45,6 +45,16 @@ Wagterm is an open-source desktop SSH client with built-in AI assistance. Connec
 
 ## Getting Started
 
+### Install with Homebrew (macOS)
+
+```bash
+brew tap WagnerAgent/homebrew-tap
+brew install --cask wagterm
+```
+
+> **Unsigned build note (macOS):** If macOS says the app is damaged or can’t be opened, run:
+> `xattr -dr com.apple.quarantine /Applications/Wagterm.app`
+
 ### Prerequisites
 
 - Node.js 18+ (20 recommended)
@@ -56,6 +66,23 @@ Wagterm is an open-source desktop SSH client with built-in AI assistance. Connec
 npm install
 npm run dev
 ```
+
+### Environment Variables
+
+Create a `.env` file at the project root to configure local settings:
+
+```bash
+cp .env.example .env
+```
+
+If `.env.example` doesn’t exist, create `.env` manually. Common keys:
+
+```bash
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+These keys can also be set inside the app under **Preferences → AI Providers**.
 
 ### Build Local Installers
 
